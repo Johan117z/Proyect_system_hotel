@@ -4,6 +4,7 @@
 
 package com.mycompany.sistema_hotel;
 
+import java.time.LocalDate;
 import java.util.List;
 
 public class System_hotel {
@@ -22,10 +23,10 @@ public class System_hotel {
             switch (option) {
                 case 1 -> roomManagementMenu();
                 case 2 -> guestManagementMenu();
-                case 3 -> System.out.println("[DEV 2] Reservation Management under construction...");
-                case 4 -> System.out.println("[DEV 2] Check-in under construction...");
-                case 5 -> System.out.println("[DEV 2] Check-out under construction...");
-                case 6 -> System.out.println("[DEV 2] Billing under construction...");
+                case 3 -> reservationManagementMenu();
+                case 4 -> processCheckInMenu();
+                case 5 -> processCheckOutMenu();
+                case 6 -> billingMenu();
                 case 7 -> showGeneralReport();
                 case 0 -> System.out.println("Thank you for using the Hotel Management System!");
                 default -> System.err.println("Invalid option. Please try again.");
@@ -153,6 +154,115 @@ public class System_hotel {
         } while (option != 0);
     }
 
+    static void reservationManagementMenu() {
+        int option = -1;
+        do {
+            System.out.println("--- RESERVATION MANAGEMENT ---");
+            System.out.println("1. Create reservation");
+            System.out.println("2. List all reservations");
+            System.out.println("0. Back to main menu");
+
+            option = ConsoleUtils.readInt("Option: ");
+
+            switch (option) {
+                case 1 -> {
+                    String doc = ConsoleUtils.readText("Enter Guest ID Document: ");
+                    Guest guest = hotel.findGuest(doc);
+                    if (guest == null) {
+                        System.err.println("Guest not found. Please register the guest first.");
+                        break;
+                    }
+
+                    int roomNum = ConsoleUtils.readInt("Enter Room Number: ");
+                    Room room = hotel.findRoom(roomNum);
+                    if (room == null) {
+                        System.err.println("Room not found.");
+                        break;
+                    }
+
+                    int stayDays = ConsoleUtils.readInt("Enter number of stay days: ");
+                    LocalDate startDate = LocalDate.now();
+                    LocalDate endDate = startDate.plusDays(stayDays);
+
+                    try {
+                        Reservation res = hotel.createReservation(guest, room, startDate, endDate);
+                        System.out.println("Reservation created successfully:\n  " + res);
+                    } catch (Exception e) {
+                        System.err.println("Error creating reservation: " + e.getMessage());
+                    }
+                }
+                case 2 -> {
+                    List<Reservation> list = hotel.getAllReservations();
+                    if (list.isEmpty()) {
+                        System.out.println("No reservations found.");
+                    } else {
+                        System.out.println("RESERVATION LIST:");
+                        for (Reservation r : list) {
+                            System.out.println("  - " + r);
+                        }
+                    }
+                }
+                case 0 -> System.out.println("Returning...");
+                default -> System.err.println("Invalid option.");
+            }
+            System.out.println();
+        } while (option != 0);
+    }
+
+    static void processCheckInMenu() {
+        System.out.println("--- CHECK-IN PROCESS ---");
+        int resId = ConsoleUtils.readInt("Enter Reservation ID for Check-in: ");
+        Reservation res = hotel.findReservation(resId);
+
+        if (res == null) {
+            System.err.println("Reservation not found.");
+            return;
+        }
+
+        try {
+            res.processCheckIn();
+            System.out.println("Check-in successful for Reservation ID " + resId + ". Room " + res.getRoom().getRoomNumber() + " is now OCCUPIED.");
+        } catch (Exception e) {
+            System.err.println("Error during Check-in: " + e.getMessage());
+        }
+    }
+
+    static void processCheckOutMenu() {
+        System.out.println("--- CHECK-OUT PROCESS ---");
+        int resId = ConsoleUtils.readInt("Enter Reservation ID for Check-out: ");
+        Reservation res = hotel.findReservation(resId);
+
+        if (res == null) {
+            System.err.println("Reservation not found.");
+            return;
+        }
+
+        try {
+            res.processCheckOut();
+            System.out.println("Check-out successful for Reservation ID " + resId + ". Room " + res.getRoom().getRoomNumber() + " is now AVAILABLE.");
+            
+            Invoice invoice = hotel.generateInvoice(res);
+            System.out.println("\n--- INVOICE GENERATED ---");
+            System.out.println(invoice);
+        } catch (Exception e) {
+            System.err.println("Error during Check-out: " + e.getMessage());
+        }
+    }
+
+    static void billingMenu() {
+        System.out.println("--- BILLING & INVOICES ---");
+        List<Invoice> list = hotel.getAllInvoices();
+        if (list.isEmpty()) {
+            System.out.println("No invoices generated yet.");
+        } else {
+            for (Invoice inv : list) {
+                System.out.println("-----------------------------------");
+                System.out.println(inv);
+            }
+            System.out.println("-----------------------------------");
+        }
+    }
+
     static void displayRoomList(List<Room> list, String title) {
         if (list.isEmpty()) {
             System.out.println("No rooms to display for '" + title + "'.");
@@ -170,6 +280,8 @@ public class System_hotel {
         System.out.println("Available Rooms: " + hotel.getAvailableRooms().size());
         System.out.println("Occupied Rooms: " + hotel.getOccupiedRooms().size());
         System.out.println("Total Registered Guests: " + hotel.getAllGuests().size());
+        System.out.println("Total Reservations: " + hotel.getAllReservations().size());
+        System.out.println("Total Invoices Generated: " + hotel.getAllInvoices().size());
     }
 
     static void loadSeedData() {

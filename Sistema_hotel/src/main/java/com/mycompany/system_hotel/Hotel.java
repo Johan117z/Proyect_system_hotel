@@ -12,6 +12,10 @@ public class Hotel {
     String name;
     List<Room> rooms;
     List<Guest> guests;
+    List<Reservation> reservations;
+    List<Invoice> invoices;
+    int nextReservationId = 1;
+    int nextInvoiceId = 1;
 
     public Hotel(String name) {
         if (name == null || name.trim().isEmpty()) {
@@ -20,6 +24,8 @@ public class Hotel {
         this.name = name.trim();
         this.rooms = new ArrayList<>();
         this.guests = new ArrayList<>();
+        this.reservations = new ArrayList<>();
+        this.invoices = new ArrayList<>();
     }
 
     public String getName() {
@@ -91,5 +97,34 @@ public class Hotel {
 
     public List<Guest> getAllGuests() {
         return new ArrayList<>(guests);
+    }
+
+    public Reservation createReservation(Guest guest, Room room, java.time.LocalDate startDate, java.time.LocalDate endDate) {
+        Reservation reservation = new Reservation(nextReservationId++, guest, room, startDate, endDate);
+        reservations.add(reservation);
+        return reservation;
+    }
+
+    public Reservation findReservation(int reservationId) {
+        for (Reservation res : reservations) {
+            if (res.getReservationId() == reservationId) {
+                return res;
+            }
+        }
+        return null;
+    }
+
+    public List<Reservation> getAllReservations() {
+        return new ArrayList<>(reservations);
+    }
+
+    public Invoice generateInvoice(Reservation reservation) {
+        Invoice invoice = new Invoice(nextInvoiceId++, reservation);
+        invoices.add(invoice);
+        return invoice;
+    }
+
+    public List<Invoice> getAllInvoices() {
+        return new ArrayList<>(invoices);
     }
 }
