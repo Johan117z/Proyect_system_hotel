@@ -1,0 +1,5 @@
+com\mycompany\sistema_hotel\System_hotel.class
+com\mycompany\sistema_hotel\Guest.class
+com\mycompany\sistema_hotel\Hotel.class
+com\mycompany\sistema_hotel\ConsoleUtils.class
+com\mycompany\sistema_hotel\Room.class
