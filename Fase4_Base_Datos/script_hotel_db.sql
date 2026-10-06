@@ -18,6 +18,7 @@ CREATE TABLE rooms (
     type ENUM('SINGLE', 'DOUBLE', 'SUITE') NOT NULL,
     capacity INT NOT NULL,
     price_per_night DECIMAL(10, 2) NOT NULL,
+    extra_service_fee DECIMAL(10, 2) DEFAULT 0.00,
     status ENUM('AVAILABLE', 'OCCUPIED', 'MAINTENANCE') DEFAULT 'AVAILABLE'
 );
 
@@ -54,12 +55,12 @@ INSERT INTO guests (document, full_name, email, phone) VALUES
 ('1075987654', 'Ana María Gómez', 'ana.gomez@example.com', '3209876543'),
 ('1076543210', 'Luis Fernando Torres', 'luis.torres@example.com', '3154567890');
 
--- 2. Insertar Habitaciones con diferentes estados y tipos
-INSERT INTO rooms (room_number, type, capacity, price_per_night, status) VALUES 
-(101, 'SINGLE', 1, 120000.00, 'AVAILABLE'),
-(102, 'DOUBLE', 2, 200000.00, 'AVAILABLE'),
-(201, 'SUITE', 4, 350000.00, 'OCCUPIED'),
-(202, 'SINGLE', 1, 120000.00, 'MAINTENANCE');
+-- 2. Insertar Habitaciones con diferentes estados y tipos (Incluyendo la tarifa extra para la Suite)
+INSERT INTO rooms (room_number, type, capacity, price_per_night, extra_service_fee, status) VALUES 
+(101, 'SINGLE', 1, 120000.00, 0.00, 'AVAILABLE'),
+(102, 'DOUBLE', 2, 200000.00, 0.00, 'AVAILABLE'),
+(201, 'SUITE', 4, 350000.00, 50000.00, 'OCCUPIED'),
+(202, 'SINGLE', 1, 120000.00, 0.00, 'MAINTENANCE');
 
 -- 3. Insertar Reservas (asociando IDs de huéspedes y habitaciones existentes)
 INSERT INTO reservations (reservation_id, guest_id, room_id, check_in_date, check_out_date, status) VALUES 
