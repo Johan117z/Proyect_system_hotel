@@ -4,46 +4,46 @@ USE system_hotel_db;
 
 -- 1. Tabla Guests
 CREATE TABLE guests (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    document VARCHAR(20) UNIQUE NOT NULL,
-    full_name VARCHAR(100) NOT NULL,
-    email VARCHAR(100) NOT NULL,
-    phone VARCHAR(20) NOT NULL
+    id SMALLINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,   -- 2 bytes, hasta 65,535 huéspedes
+    document CHAR(10) UNIQUE NOT NULL,                 -- 10 bytes fijos: cédula colombiana
+    full_name VARCHAR(60) NOT NULL,                    -- nombre completo rara vez pasa de 60
+    email VARCHAR(80) NOT NULL,                        -- 80 cubre casi cualquier email real
+    phone CHAR(10) NOT NULL                            -- 10 bytes fijos: celular colombiano
 );
 
 -- 2. Tabla Rooms
 CREATE TABLE rooms (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    room_number INT UNIQUE NOT NULL,
-    type ENUM('SINGLE', 'DOUBLE', 'SUITE') NOT NULL,
-    capacity INT NOT NULL,
-    price_per_night DECIMAL(10, 2) NOT NULL,
-    extra_service_fee DECIMAL(10, 2) DEFAULT 0.00,
-    status ENUM('AVAILABLE', 'OCCUPIED', 'MAINTENANCE') DEFAULT 'AVAILABLE'
+    id SMALLINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,   -- 2 bytes
+    room_number SMALLINT UNSIGNED UNIQUE NOT NULL,     -- 2 bytes, hasta 65,535 habitaciones
+    type ENUM('SINGLE', 'DOUBLE', 'SUITE') NOT NULL,   -- ENUM = 1 byte internamente
+    capacity TINYINT UNSIGNED NOT NULL,                -- 1 byte, hasta 255 huéspedes/hab
+    price_per_night DECIMAL(8, 2) UNSIGNED NOT NULL,   -- 4 bytes, hasta 999,999.99
+    extra_service_fee DECIMAL(8, 2) UNSIGNED DEFAULT 0.00,
+    status ENUM('AVAILABLE', 'OCCUPIED', 'MAINTENANCE') DEFAULT 'AVAILABLE'  -- 1 byte
 );
 
 -- 3. Tabla Reservations
 CREATE TABLE reservations (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    reservation_id VARCHAR(50) UNIQUE NOT NULL,
-    guest_id INT NOT NULL,
-    room_id INT NOT NULL,
-    check_in_date DATE NOT NULL,
-    check_out_date DATE NOT NULL,
-    status ENUM('PENDING', 'ACTIVE', 'COMPLETED', 'CANCELLED') DEFAULT 'PENDING',
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,        -- crece sin tope realista, se deja INT (4 bytes)
+    reservation_id CHAR(13) UNIQUE NOT NULL,           -- 13 bytes fijos: RES-2026-001
+    guest_id SMALLINT UNSIGNED NOT NULL,                -- 2 bytes
+    room_id SMALLINT UNSIGNED NOT NULL,                 -- 2 bytes
+    check_in_date DATE NOT NULL,                        -- 3 bytes
+    check_out_date DATE NOT NULL,                       -- 3 bytes
+    status ENUM('PENDING', 'ACTIVE', 'COMPLETED', 'CANCELLED') DEFAULT 'PENDING',  -- 1 byte
     FOREIGN KEY (guest_id) REFERENCES guests(id) ON DELETE RESTRICT,
     FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE RESTRICT
 );
 
 -- 4. Tabla Invoices
 CREATE TABLE invoices (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    reservation_id INT NOT NULL UNIQUE,
-    stay_days INT NOT NULL,
-    night_rate DECIMAL(10, 2) NOT NULL,
-    additional_services DECIMAL(10, 2) DEFAULT 0.00,
-    total_amount DECIMAL(10, 2) NOT NULL,
-    issue_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,         -- 4 bytes
+    reservation_id INT UNSIGNED NOT NULL UNIQUE,        -- 4 bytes, debe matchear reservations.id
+    stay_days TINYINT UNSIGNED NOT NULL,                -- 1 byte, hasta 255 noches (sobra)
+    night_rate DECIMAL(8, 2) UNSIGNED NOT NULL,         -- 4 bytes
+    additional_services DECIMAL(8, 2) UNSIGNED DEFAULT 0.00,
+    total_amount DECIMAL(10, 2) UNSIGNED NOT NULL,      -- 5 bytes, suma puede superar 999,999.99
+    issue_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,     -- 4 bytes
     FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE
 );
 
@@ -70,5 +70,3 @@ INSERT INTO reservations (reservation_id, guest_id, room_id, check_in_date, chec
 -- 4. Insertar Factura de prueba (asociada a la primera reserva)
 INSERT INTO invoices (reservation_id, stay_days, night_rate, additional_services, total_amount) VALUES 
 (1, 5, 350000.00, 50000.00, 1800000.00);
-
-
