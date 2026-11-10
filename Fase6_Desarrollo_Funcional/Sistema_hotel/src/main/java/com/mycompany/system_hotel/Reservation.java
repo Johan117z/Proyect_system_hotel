@@ -1,81 +1,118 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
-package com.mycompany.sistema_hotel;
+package com.mycompany.system_hotel;
 
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 
+/**
+ * Reserva de una habitación (FR-07 a FR-10). Controla sus propias transiciones de estado.
+ */
 public class Reservation {
 
-    int reservationId;
-    Guest guest;
-    Room room;
-    LocalDate startDate;
-    LocalDate endDate;
-    String status;
+    private final String reservationCode;   // Formato RES-AAAA-NNN (reservations.reservation_code)
+    private final IGuest guest;
+    private final IRoom room;
+    private final LocalDate checkInDate;
+    private final LocalDate checkOutDate;
+    private ReservationStatus status;
 
-    public Reservation(int reservationId, Guest guest, Room room, LocalDate startDate, LocalDate endDate) {
+    public Reservation(String reservationCode, IGuest guest, IRoom room,
+                       LocalDate checkInDate, LocalDate checkOutDate) {
+        if (reservationCode == null || reservationCode.isBlank()) {
+            throw new IllegalArgumentException("El código de la reserva es obligatorio.");
+        }
         if (guest == null) {
-            throw new IllegalArgumentException("Guest cannot be null.");
+            throw new IllegalArgumentException("El huésped es obligatorio.");
         }
         if (room == null) {
-            throw new IllegalArgumentException("Room cannot be null.");
+            throw new IllegalArgumentException("La habitación es obligatoria.");
         }
-        if (startDate == null || endDate == null) {
-            throw new IllegalArgumentException("Dates cannot be null.");
+        if (checkInDate == null || checkOutDate == null) {
+            throw new IllegalArgumentException("Las fechas de entrada y salida son obligatorias.");
         }
-        if (endDate.isBefore(startDate) || endDate.isEqual(startDate)) {
-            throw new IllegalArgumentException("End date must be after start date.");
+        if (!checkOutDate.isAfter(checkInDate)) {
+            throw new IllegalArgumentException("La fecha de salida debe ser posterior a la de entrada.");
         }
-
-        this.reservationId = reservationId;
+        this.reservationCode = reservationCode;
         this.guest = guest;
         this.room = room;
-        this.startDate = startDate;
-        this.endDate = endDate;
-        this.status = "CONFIRMED";
+        this.checkInDate = checkInDate;
+        this.checkOutDate = checkOutDate;
+        this.status = ReservationStatus.PENDING;   // FR-07: estado inicial
     }
 
-    public long calculateStayDays() {
-        return ChronoUnit.DAYS.between(startDate, endDate);
+    /**
+     * BR-01: dos rangos [entrada, salida) se cruzan si cada uno empieza antes de que el otro termine.
+     * La salida es exclusiva: un huésped puede entrar el mismo día en que otro sale.
+     */
+    public boolean overlaps(LocalDate start, LocalDate end) {
+        return status.blocksRoom() && start.isBefore(checkOutDate) && end.isAfter(checkInDate);
     }
 
-    public void processCheckIn() {
-        if (!status.equals("CONFIRMED")) {
-            throw new IllegalStateException("Check-in is only allowed for CONFIRMED reservations.");
+    public long getStayDays() {
+        return ChronoUnit.DAYS.between(checkInDate, checkOutDate);
+    }
+
+    /** FR-08 / BR-02: solo una reserva PENDING puede hacer check-in. */
+    public void checkIn() {
+        if (status != ReservationStatus.PENDING) {
+            throw new BusinessRuleException("BR-02",
+                    "Solo se puede hacer check-in de reservas pendientes. Estado actual: " + status + ".");
         }
-        this.status = "CHECKED_IN";
-        this.room.changeStatus("OCCUPIED");
-    }
-
-    public void processCheckOut() {
-        if (!status.equals("CHECKED_IN")) {
-            throw new IllegalStateException("Check-out is only allowed for CHECKED_IN reservations.");
+        if (room.getStatus() != RoomStatus.AVAILABLE) {
+            throw new BusinessRuleException("BR-02",
+                    "La habitación " + room.getNumber() + " no está disponible (" + room.getStatus() + ").");
         }
-        this.status = "CHECKED_OUT";
-        this.room.changeStatus("AVAILABLE");
+        status = ReservationStatus.ACTIVE;
+        room.changeStatus(RoomStatus.OCCUPIED);
     }
 
-    public int getReservationId() {
-        return reservationId;
+    /** FR-09: ACTIVE -> COMPLETED y la habitación vuelve a AVAILABLE. */
+    public void checkOut() {
+        if (status != ReservationStatus.ACTIVE) {
+            throw new BusinessRuleException("FR-09",
+                    "Solo se puede hacer check-out de reservas activas. Estado actual: " + status + ".");
+        }
+        status = ReservationStatus.COMPLETED;
+        room.changeStatus(RoomStatus.AVAILABLE);
     }
 
-    public Guest getGuest() {
+    /** FR-10: solo se cancelan reservas pendientes. La habitación no cambia porque aún no estaba ocupada. */
+    public void cancel() {
+        if (status != ReservationStatus.PENDING) {
+            throw new BusinessRuleException("FR-10",
+                    "Solo se pueden cancelar reservas pendientes. Estado actual: " + status + ".");
+        }
+        status = ReservationStatus.CANCELLED;
+    }
+
+    public String getReservationCode() {
+        return reservationCode;
+    }
+
+    public IGuest getGuest() {
         return guest;
     }
 
-    public Room getRoom() {
+    public IRoom getRoom() {
         return room;
     }
 
-    public String getStatus() {
+    public LocalDate getCheckInDate() {
+        return checkInDate;
+    }
+
+    public LocalDate getCheckOutDate() {
+        return checkOutDate;
+    }
+
+    public ReservationStatus getStatus() {
         return status;
     }
 
     @Override
     public String toString() {
-        return "Reservation ID: " + reservationId + " | Guest: " + guest.getFullName() + " | Room: " + room.getRoomNumber() + " | From: " + startDate + " To: " + endDate + " | Status: " + status;
+        return reservationCode + " | " + guest.getFullName() + " | Hab. " + room.getNumber()
+                + " | " + ConsoleUtils.formatDate(checkInDate) + " -> " + ConsoleUtils.formatDate(checkOutDate)
+                + " | " + status;
     }
 }

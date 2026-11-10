@@ -1,130 +1,224 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
-package com.mycompany.sistema_hotel;
+package com.mycompany.system_hotel;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Servicio de aplicación: orquesta las entidades y aplica las reglas de negocio.
+ * En la migración a Spring Boot sus métodos pasan casi uno a uno a RoomService,
+ * GuestService y ReservationService.
+ */
 public class Hotel {
 
-    String name;
-    List<Room> rooms;
-    List<Guest> guests;
-    List<Reservation> reservations;
-    List<Invoice> invoices;
-    int nextReservationId = 1;
-    int nextInvoiceId = 1;
+    private final String name;
+    private final List<IRoom> rooms = new ArrayList<>();
+    private final List<IRoom> retiredRooms = new ArrayList<>();   // FR-04: baja lógica (rooms.is_active = 0)
+    private final List<Guest> guests = new ArrayList<>();
+    private final List<Reservation> reservations = new ArrayList<>();
+    private final List<Invoice> invoices = new ArrayList<>();
+    private int reservationSequence = 1;
+    private int invoiceSequence = 1;
 
     public Hotel(String name) {
-        if (name == null || name.trim().isEmpty()) {
-            throw new IllegalArgumentException("Hotel name cannot be empty.");
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("El nombre del hotel es obligatorio.");
         }
         this.name = name.trim();
-        this.rooms = new ArrayList<>();
-        this.guests = new ArrayList<>();
-        this.reservations = new ArrayList<>();
-        this.invoices = new ArrayList<>();
     }
 
     public String getName() {
         return name;
     }
 
-    public boolean registerRoom(Room newRoom) {
-        if (newRoom == null) {
-            throw new IllegalArgumentException("Room to register cannot be null.");
+    // ===================== Módulo 1: Habitaciones =====================
+
+    /** FR-01: el número es único, incluso frente a habitaciones dadas de baja (rooms.room_number UNIQUE). */
+    public void registerRoom(IRoom room) {
+        if (room == null) {
+            throw new IllegalArgumentException("La habitación es obligatoria.");
         }
-        if (findRoom(newRoom.getRoomNumber()) != null) {
-            throw new IllegalArgumentException("A room with number " + newRoom.getRoomNumber() + " already exists.");
+        boolean duplicated = rooms.stream().anyMatch(r -> r.getNumber() == room.getNumber())
+                || retiredRooms.stream().anyMatch(r -> r.getNumber() == room.getNumber());
+        if (duplicated) {
+            throw new BusinessRuleException("FR-01", "Ya existe una habitación con el número " + room.getNumber() + ".");
         }
-        return this.rooms.add(newRoom);
+        rooms.add(room);
     }
 
-    public Room findRoom(int roomNumber) {
-        for (Room room : rooms) {
-            if (room.getRoomNumber() == roomNumber) {
-                return room;
-            }
-        }
-        return null;
+    public IRoom findRoom(int number) {
+        return rooms.stream()
+                .filter(r -> r.getNumber() == number)
+                .findFirst()
+                .orElseThrow(() -> new EntityNotFoundException("No existe la habitación " + number + "."));
     }
 
-    public List<Room> getAvailableRooms() {
-        List<Room> available = new ArrayList<>();
-        for (Room room : rooms) {
-            if (room.getStatus().equalsIgnoreCase("AVAILABLE")) {
-                available.add(room);
-            }
-        }
-        return available;
+    /** FR-02 */
+    public List<IRoom> getAllRooms() {
+        return List.copyOf(rooms);
     }
 
-    public List<Room> getOccupiedRooms() {
-        List<Room> occupied = new ArrayList<>();
-        for (Room room : rooms) {
-            if (room.getStatus().equalsIgnoreCase("OCCUPIED")) {
-                occupied.add(room);
-            }
-        }
-        return occupied;
+    /** FR-02 */
+    public List<IRoom> getRoomsByStatus(RoomStatus status) {
+        return rooms.stream().filter(r -> r.getStatus() == status).toList();
     }
 
-    public List<Room> getAllRooms() {
-        return new ArrayList<>(rooms);
+    /** FR-03: cambio de tarifa. No afecta facturas emitidas (BR-03) porque Invoice copia la tarifa. */
+    public void updateRoomRate(int number, BigDecimal newPrice) {
+        findRoom(number).setPricePerNight(newPrice);
     }
 
-    public boolean registerGuest(Guest newGuest) {
-        if (newGuest == null) {
-            throw new IllegalArgumentException("Guest cannot be null.");
+    /**
+     * FR-03: cambio de tipo. Como el tipo define la subclase, se reemplaza el objeto.
+     * Solo se permite si la habitación no tiene reservas pendientes o activas (BR-05).
+     */
+    public IRoom changeRoomType(int number, RoomType newType, int capacity,
+                                BigDecimal pricePerNight, BigDecimal extraServiceFee) {
+        IRoom current = findRoom(number);
+        if (hasBlockingReservations(current)) {
+            throw new BusinessRuleException("BR-05",
+                    "No se puede cambiar el tipo: la habitación " + number + " tiene reservas pendientes o activas.");
         }
-        if (findGuest(newGuest.getIdDocument()) != null) {
-            throw new IllegalArgumentException("A guest with ID " + newGuest.getIdDocument() + " already exists.");
-        }
-        return this.guests.add(newGuest);
+        Room replacement = RoomFactory.create(newType, number, capacity, pricePerNight, extraServiceFee);
+        replacement.changeStatus(current.getStatus());
+        rooms.set(rooms.indexOf(current), replacement);
+        return replacement;
     }
 
-    public Guest findGuest(String idDocument) {
-        if (idDocument == null) return null;
-        for (Guest guest : guests) {
-            if (guest.getIdDocument().equalsIgnoreCase(idDocument.trim())) {
-                return guest;
-            }
+    /**
+     * Cambio manual de estado (mantenimiento). OCCUPIED solo se asigna con check-in (FR-08)
+     * y una habitación ocupada solo se libera con check-out (FR-09).
+     */
+    public void changeRoomStatus(int number, RoomStatus newStatus) {
+        IRoom room = findRoom(number);
+        if (newStatus == RoomStatus.OCCUPIED) {
+            throw new BusinessRuleException("BR-06", "El estado OCCUPIED solo se asigna al hacer check-in.");
         }
-        return null;
+        if (room.getStatus() == RoomStatus.OCCUPIED) {
+            throw new BusinessRuleException("BR-06", "La habitación está ocupada; se libera con el check-out.");
+        }
+        room.changeStatus(newStatus);
+    }
+
+    /** FR-04: baja lógica, solo si no hay reservas pendientes o activas. Conserva el historial. */
+    public void deleteRoom(int number) {
+        IRoom room = findRoom(number);
+        if (hasBlockingReservations(room)) {
+            throw new BusinessRuleException("FR-04",
+                    "No se puede eliminar: la habitación " + number + " tiene reservas pendientes o activas.");
+        }
+        rooms.remove(room);
+        retiredRooms.add(room);
+    }
+
+    private boolean hasBlockingReservations(IRoom room) {
+        return reservations.stream()
+                .anyMatch(r -> r.getRoom() == room && r.getStatus().blocksRoom());
+    }
+
+    // ===================== Módulo 2: Huéspedes =====================
+
+    /** FR-05 */
+    public void registerGuest(Guest guest) {
+        if (guest == null) {
+            throw new IllegalArgumentException("El huésped es obligatorio.");
+        }
+        if (guests.stream().anyMatch(g -> g.getDocument().equals(guest.getDocument()))) {
+            throw new BusinessRuleException("FR-05", "Ya existe un huésped con el documento " + guest.getDocument() + ".");
+        }
+        guests.add(guest);
+    }
+
+    /** FR-06 */
+    public Guest findGuest(String document) {
+        String doc = document == null ? "" : document.trim();
+        return guests.stream()
+                .filter(g -> g.getDocument().equals(doc))
+                .findFirst()
+                .orElseThrow(() -> new EntityNotFoundException("No existe un huésped con el documento " + doc + "."));
+    }
+
+    /** FR-06 */
+    public void updateGuestContact(String document, String email, String phone) {
+        findGuest(document).updateContactInfo(email, phone);
     }
 
     public List<Guest> getAllGuests() {
-        return new ArrayList<>(guests);
+        return List.copyOf(guests);
     }
 
-    public Reservation createReservation(Guest guest, Room room, java.time.LocalDate startDate, java.time.LocalDate endDate) {
-        Reservation reservation = new Reservation(nextReservationId++, guest, room, startDate, endDate);
+    // ===================== Módulo 3: Reservas y operación =====================
+
+    /** FR-07 con BR-01 (sin sobreventa) y BR-04 (no reservar en mantenimiento ni en el pasado). */
+    public Reservation createReservation(String guestDocument, int roomNumber,
+                                         LocalDate checkInDate, LocalDate checkOutDate) {
+        Guest guest = findGuest(guestDocument);
+        IRoom room = findRoom(roomNumber);
+
+        if (checkInDate == null || checkOutDate == null) {
+            throw new IllegalArgumentException("Las fechas de entrada y salida son obligatorias.");
+        }
+        if (checkInDate.isBefore(LocalDate.now())) {
+            throw new BusinessRuleException("BR-04", "La fecha de entrada no puede ser anterior a hoy.");
+        }
+        if (!room.isBookable()) {
+            throw new BusinessRuleException("BR-04", "La habitación " + roomNumber + " está en mantenimiento.");
+        }
+        boolean overlap = reservations.stream()
+                .anyMatch(r -> r.getRoom() == room && r.overlaps(checkInDate, checkOutDate));
+        if (overlap) {
+            throw new BusinessRuleException("BR-01",
+                    "La habitación " + roomNumber + " ya está reservada en ese rango de fechas.");
+        }
+
+        Reservation reservation = new Reservation(nextReservationCode(checkInDate), guest, room,
+                checkInDate, checkOutDate);
         reservations.add(reservation);
         return reservation;
     }
 
-    public Reservation findReservation(int reservationId) {
-        for (Reservation res : reservations) {
-            if (res.getReservationId() == reservationId) {
-                return res;
-            }
-        }
-        return null;
+    /** Código RES-AAAA-NNN, igual al formato de reservations.reservation_code. */
+    private String nextReservationCode(LocalDate checkInDate) {
+        return String.format("RES-%d-%03d", checkInDate.getYear(), reservationSequence++);
     }
 
-    public List<Reservation> getAllReservations() {
-        return new ArrayList<>(reservations);
+    public Reservation findReservation(String reservationCode) {
+        String code = reservationCode == null ? "" : reservationCode.trim().toUpperCase();
+        return reservations.stream()
+                .filter(r -> r.getReservationCode().equals(code))
+                .findFirst()
+                .orElseThrow(() -> new EntityNotFoundException("No existe la reserva " + code + "."));
     }
 
-    public Invoice generateInvoice(Reservation reservation) {
-        Invoice invoice = new Invoice(nextInvoiceId++, reservation);
+    /** FR-08 */
+    public Reservation checkIn(String reservationCode) {
+        Reservation reservation = findReservation(reservationCode);
+        reservation.checkIn();
+        return reservation;
+    }
+
+    /** FR-09: cierra la reserva y emite la factura en una sola operación. */
+    public Invoice checkOut(String reservationCode, BigDecimal additionalServices) {
+        Reservation reservation = findReservation(reservationCode);
+        reservation.checkOut();
+        Invoice invoice = new Invoice(invoiceSequence++, reservation, additionalServices);
         invoices.add(invoice);
         return invoice;
     }
 
+    /** FR-10 */
+    public Reservation cancelReservation(String reservationCode) {
+        Reservation reservation = findReservation(reservationCode);
+        reservation.cancel();
+        return reservation;
+    }
+
+    public List<Reservation> getAllReservations() {
+        return List.copyOf(reservations);
+    }
+
     public List<Invoice> getAllInvoices() {
-        return new ArrayList<>(invoices);
+        return List.copyOf(invoices);
     }
 }

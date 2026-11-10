@@ -1,52 +1,87 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
-package com.mycompany.sistema_hotel;
+package com.mycompany.system_hotel;
 
+import java.math.BigDecimal;
+import java.text.NumberFormat;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.format.ResolverStyle;
+import java.util.Locale;
 import java.util.Scanner;
 
-public class ConsoleUtils {
+/**
+ * Lectura validada desde consola y formato de salida (fechas dd/mm/aaaa, moneda COP).
+ */
+public final class ConsoleUtils {
 
-    static final Scanner scanner = new Scanner(System.in);
+    private static final Scanner SCANNER = new Scanner(System.in);
+    private static final DateTimeFormatter UI_DATE =
+            DateTimeFormatter.ofPattern("dd/MM/uuuu").withResolverStyle(ResolverStyle.STRICT);
+    private static final Locale CO = Locale.forLanguageTag("es-CO");
+
+    private ConsoleUtils() {
+    }
 
     public static String readText(String message) {
-        String input;
         while (true) {
             System.out.print(message);
-            input = scanner.nextLine().trim();
+            String input = SCANNER.nextLine().trim();
             if (!input.isEmpty()) {
                 return input;
             }
-            System.err.println("Field cannot be empty. Please try again.");
+            System.out.println("  ! El campo no puede estar vacío.");
         }
     }
 
     public static int readInt(String message) {
         while (true) {
+            System.out.print(message);
             try {
-                System.out.print(message);
-                String input = scanner.nextLine().trim();
-                return Integer.parseInt(input);
+                return Integer.parseInt(SCANNER.nextLine().trim());
             } catch (NumberFormatException e) {
-                System.err.println("Invalid input. Please enter a valid integer number.");
+                System.out.println("  ! Ingrese un número entero válido.");
             }
         }
     }
 
-    public static double readDouble(String message) {
+    /** Lee un valor en pesos. Acepta "120000", "120.000" o "120000,50". */
+    public static BigDecimal readMoney(String message, boolean allowZero) {
         while (true) {
+            System.out.print(message);
+            String input = SCANNER.nextLine().trim().replace("$", "").replace(" ", "");
+            String normalized = input.contains(",")
+                    ? input.replace(".", "").replace(",", ".")
+                    : input.replace(".", "");
             try {
-                System.out.print(message);
-                String input = scanner.nextLine().trim().replace(",", ".");
-                double value = Double.parseDouble(input);
-                if (value > 0) {
+                BigDecimal value = new BigDecimal(normalized);
+                if (value.signum() > 0 || (allowZero && value.signum() == 0)) {
                     return value;
                 }
-                System.err.println("Value must be greater than 0.");
+                System.out.println(allowZero ? "  ! El valor no puede ser negativo." : "  ! El valor debe ser mayor que cero.");
             } catch (NumberFormatException e) {
-                System.err.println("Invalid input. Please enter a valid numeric amount.");
+                System.out.println("  ! Ingrese un valor numérico válido.");
             }
         }
+    }
+
+    public static LocalDate readDate(String message) {
+        while (true) {
+            System.out.print(message + " (dd/mm/aaaa): ");
+            try {
+                return LocalDate.parse(SCANNER.nextLine().trim(), UI_DATE);
+            } catch (DateTimeParseException e) {
+                System.out.println("  ! Fecha inválida. Use el formato dd/mm/aaaa.");
+            }
+        }
+    }
+
+    public static String formatDate(LocalDate date) {
+        return date.format(UI_DATE);
+    }
+
+    public static String formatCop(BigDecimal value) {
+        NumberFormat format = NumberFormat.getCurrencyInstance(CO);
+        format.setMaximumFractionDigits(0);
+        return format.format(value) + " COP";
     }
 }

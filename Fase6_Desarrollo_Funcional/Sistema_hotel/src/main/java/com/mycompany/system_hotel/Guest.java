@@ -1,75 +1,22 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
+package com.mycompany.system_hotel;
+
+/**
+ * Huésped del hotel (FR-05, FR-06).
  */
-package com.mycompany.sistema_hotel;
+public class Guest extends Person implements IGuest {
 
-public class Guest {
-
-    String idDocument;
-    String fullName;
-    String email;
-    String phone;
-
-    public Guest(String idDocument, String fullName, String email, String phone) {
-        if (idDocument == null || idDocument.trim().isEmpty()) {
-            throw new IllegalArgumentException("ID document cannot be empty.");
-        }
-        if (fullName == null || fullName.trim().isEmpty()) {
-            throw new IllegalArgumentException("Full name cannot be empty.");
-        }
-        if (email == null || !email.contains("@") || !email.contains(".")) {
-            throw new IllegalArgumentException("Email address format is invalid.");
-        }
-        if (phone == null || phone.trim().isEmpty()) {
-            throw new IllegalArgumentException("Phone number cannot be empty.");
-        }
-
-        this.idDocument = idDocument.trim();
-        this.fullName = fullName.trim();
-        this.email = email.trim();
-        this.phone = phone.trim();
+    public Guest(String document, String fullName, String email, String phone) {
+        super(document, fullName, email, phone);
     }
 
-    public String getIdDocument() {
-        return idDocument;
-    }
-
-    public String getFullName() {
-        return fullName;
-    }
-
-    public void setFullName(String fullName) {
-        if (fullName == null || fullName.trim().isEmpty()) {
-            throw new IllegalArgumentException("Full name cannot be empty.");
-        }
-        this.fullName = fullName.trim();
-    }
-
-    public String getEmail() {
-        return email;
-    }
-
-    public void setEmail(String email) {
-        if (email == null || !email.contains("@") || !email.contains(".")) {
-            throw new IllegalArgumentException("Email address format is invalid.");
-        }
-        this.email = email.trim();
-    }
-
-    public String getPhone() {
-        return phone;
-    }
-
-    public void setPhone(String phone) {
-        if (phone == null || phone.trim().isEmpty()) {
-            throw new IllegalArgumentException("Phone number cannot be empty.");
-        }
-        this.phone = phone.trim();
+    /** FR-06: solo se actualizan los datos de contacto; el documento es inmutable. */
+    public void updateContactInfo(String email, String phone) {
+        setEmail(email);
+        setPhone(phone);
     }
 
     @Override
     public String toString() {
-        return "Guest: " + fullName + " | ID: " + idDocument + " | Email: " + email + " | Phone: " + phone;
+        return getFullName() + " | Doc: " + getDocument() + " | Correo: " + getEmail() + " | Tel: " + getPhone();
     }
 }
