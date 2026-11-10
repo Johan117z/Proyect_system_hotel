@@ -1,72 +1,126 @@
+-- =====================================================================
+-- system_hotel_db  v2.0  (MySQL 8.0.16+ por las restricciones CHECK)
+-- Alineado con: SRS (FR-01..FR-10, BR-01..BR-06), diagrama de clases y código Java (Fase 6).
+-- =====================================================================
 DROP DATABASE IF EXISTS system_hotel_db;
-CREATE DATABASE system_hotel_db;
+CREATE DATABASE system_hotel_db CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 USE system_hotel_db;
 
--- 1. Tabla Guests
+-- 1. Huéspedes (FR-05, FR-06) -> clase Guest / Person
 CREATE TABLE guests (
-    id SMALLINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,   -- 2 bytes, hasta 65,535 huéspedes
-    document CHAR(10) UNIQUE NOT NULL,                 -- 10 bytes fijos: cédula colombiana
-    full_name VARCHAR(60) NOT NULL,                    -- nombre completo rara vez pasa de 60
-    email VARCHAR(80) NOT NULL,                        -- 80 cubre casi cualquier email real
-    phone CHAR(10) NOT NULL                            -- 10 bytes fijos: celular colombiano
+    id         SMALLINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    document   VARCHAR(10) NOT NULL,                       -- cédula colombiana: 6 a 10 dígitos
+    full_name  VARCHAR(60) NOT NULL,
+    email      VARCHAR(80) NOT NULL,
+    phone      CHAR(10)    NOT NULL,                       -- celular colombiano: 10 dígitos
+    created_at TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_guests_document UNIQUE (document),
+    CONSTRAINT ck_guests_document CHECK (document REGEXP '^[0-9]{6,10}$'),
+    CONSTRAINT ck_guests_phone    CHECK (phone REGEXP '^[0-9]{10}$'),
+    CONSTRAINT ck_guests_email    CHECK (email LIKE '%_@_%._%')
 );
 
--- 2. Tabla Rooms
+-- 2. Habitaciones (FR-01..FR-04) -> IRoom / Room / SingleRoom / DoubleRoom / SuiteRoom
+--    Herencia mapeada como tabla única (single table): `type` es el discriminador.
 CREATE TABLE rooms (
-    id SMALLINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,   -- 2 bytes
-    room_number SMALLINT UNSIGNED UNIQUE NOT NULL,     -- 2 bytes, hasta 65,535 habitaciones
-    type ENUM('SINGLE', 'DOUBLE', 'SUITE') NOT NULL,   -- ENUM = 1 byte internamente
-    capacity TINYINT UNSIGNED NOT NULL,                -- 1 byte, hasta 255 huéspedes/hab
-    price_per_night DECIMAL(8, 2) UNSIGNED NOT NULL,   -- 4 bytes, hasta 999,999.99
-    extra_service_fee DECIMAL(8, 2) UNSIGNED DEFAULT 0.00,
-    status ENUM('AVAILABLE', 'OCCUPIED', 'MAINTENANCE') DEFAULT 'AVAILABLE'  -- 1 byte
+    id                SMALLINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    room_number       SMALLINT UNSIGNED NOT NULL,
+    type              ENUM('SINGLE', 'DOUBLE', 'SUITE') NOT NULL,
+    capacity          TINYINT UNSIGNED NOT NULL,
+    price_per_night   DECIMAL(10, 2) NOT NULL,
+    extra_service_fee DECIMAL(10, 2) NOT NULL DEFAULT 0.00, -- solo SUITE (SuiteRoom.extraServiceFee)
+    status            ENUM('AVAILABLE', 'OCCUPIED', 'MAINTENANCE') NOT NULL DEFAULT 'AVAILABLE',
+    is_active         BOOLEAN NOT NULL DEFAULT TRUE,        -- FR-04: baja lógica, conserva el historial
+    CONSTRAINT uq_rooms_number      UNIQUE (room_number),
+    CONSTRAINT ck_rooms_number      CHECK (room_number > 0),
+    CONSTRAINT ck_rooms_capacity    CHECK (capacity > 0),
+    CONSTRAINT ck_rooms_price       CHECK (price_per_night > 0),
+    CONSTRAINT ck_rooms_extra_fee   CHECK (extra_service_fee >= 0),
+    CONSTRAINT ck_rooms_fee_suite   CHECK (type = 'SUITE' OR extra_service_fee = 0)
 );
 
--- 3. Tabla Reservations
+-- 3. Reservas (FR-07..FR-10) -> clase Reservation, enum ReservationStatus
 CREATE TABLE reservations (
-    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,        -- crece sin tope realista, se deja INT (4 bytes)
-    reservation_id CHAR(13) UNIQUE NOT NULL,           -- 13 bytes fijos: RES-2026-001
-    guest_id SMALLINT UNSIGNED NOT NULL,                -- 2 bytes
-    room_id SMALLINT UNSIGNED NOT NULL,                 -- 2 bytes
-    check_in_date DATE NOT NULL,                        -- 3 bytes
-    check_out_date DATE NOT NULL,                       -- 3 bytes
-    status ENUM('PENDING', 'ACTIVE', 'COMPLETED', 'CANCELLED') DEFAULT 'PENDING',  -- 1 byte
-    FOREIGN KEY (guest_id) REFERENCES guests(id) ON DELETE RESTRICT,
-    FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE RESTRICT
+    id               INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    reservation_code VARCHAR(15) NOT NULL,                  -- RES-AAAA-NNN
+    guest_id         SMALLINT UNSIGNED NOT NULL,
+    room_id          SMALLINT UNSIGNED NOT NULL,
+    check_in_date    DATE NOT NULL,
+    check_out_date   DATE NOT NULL,
+    status           ENUM('PENDING', 'ACTIVE', 'COMPLETED', 'CANCELLED') NOT NULL DEFAULT 'PENDING',
+    created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_reservations_code UNIQUE (reservation_code),
+    CONSTRAINT ck_reservations_code CHECK (reservation_code REGEXP '^RES-[0-9]{4}-[0-9]{3,}$'),
+    CONSTRAINT ck_reservations_dates CHECK (check_out_date > check_in_date),
+    CONSTRAINT fk_reservations_guest FOREIGN KEY (guest_id) REFERENCES guests (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_reservations_room  FOREIGN KEY (room_id)  REFERENCES rooms (id)  ON DELETE RESTRICT,
+    -- Acelera la consulta de cruce de fechas de BR-01
+    INDEX ix_reservations_overlap (room_id, status, check_in_date, check_out_date)
 );
 
--- 4. Tabla Invoices
+-- 4. Facturas (FR-09, BR-03) -> clase Invoice
+--    Copia tarifa y cargos al emitirse: un cambio posterior de precio no altera la factura.
 CREATE TABLE invoices (
-    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,         -- 4 bytes
-    reservation_id INT UNSIGNED NOT NULL UNIQUE,        -- 4 bytes, debe matchear reservations.id
-    stay_days TINYINT UNSIGNED NOT NULL,                -- 1 byte, hasta 255 noches (sobra)
-    night_rate DECIMAL(8, 2) UNSIGNED NOT NULL,         -- 4 bytes
-    additional_services DECIMAL(8, 2) UNSIGNED DEFAULT 0.00,
-    total_amount DECIMAL(10, 2) UNSIGNED NOT NULL,      -- 5 bytes, suma puede superar 999,999.99
-    issue_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,     -- 4 bytes
-    FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE
+    id                  INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    reservation_id      INT UNSIGNED NOT NULL,
+    stay_days           SMALLINT UNSIGNED NOT NULL,
+    night_rate          DECIMAL(10, 2) NOT NULL,
+    extra_service_fee   DECIMAL(10, 2) NOT NULL DEFAULT 0.00,  -- cargo de la suite
+    additional_services DECIMAL(10, 2) NOT NULL DEFAULT 0.00,  -- consumos registrados en el check-out
+    total_amount        DECIMAL(12, 2) NOT NULL,
+    issue_date          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_invoices_reservation UNIQUE (reservation_id),   -- 1 reserva : 1 factura
+    CONSTRAINT ck_invoices_values CHECK (stay_days > 0 AND night_rate > 0
+                                         AND extra_service_fee >= 0 AND additional_services >= 0),
+    CONSTRAINT ck_invoices_total  CHECK (total_amount =
+                                         stay_days * night_rate + extra_service_fee + additional_services),
+    -- BR-03: RESTRICT (antes CASCADE). Borrar una reserva no puede borrar su factura.
+    CONSTRAINT fk_invoices_reservation FOREIGN KEY (reservation_id) REFERENCES reservations (id) ON DELETE RESTRICT
 );
 
-USE system_hotel_db;
+-- BR-03: las facturas son inmutables también a nivel de base de datos.
+DELIMITER $$
+CREATE TRIGGER trg_invoices_no_update BEFORE UPDATE ON invoices
+FOR EACH ROW
+BEGIN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BR-03: una factura emitida no se puede modificar.';
+END$$
 
--- 1. Insertar Huéspedes de prueba
-INSERT INTO guests (document, full_name, email, phone) VALUES 
-('1075234567', 'Carlos Pérez', 'carlos.perez@example.com', '3101234567'),
-('1075987654', 'Ana María Gómez', 'ana.gomez@example.com', '3209876543'),
-('1076543210', 'Luis Fernando Torres', 'luis.torres@example.com', '3154567890');
+CREATE TRIGGER trg_invoices_no_delete BEFORE DELETE ON invoices
+FOR EACH ROW
+BEGIN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BR-03: una factura emitida no se puede eliminar.';
+END$$
+DELIMITER ;
 
--- 2. Insertar Habitaciones con diferentes estados y tipos (Incluyendo la tarifa extra para la Suite)
-INSERT INTO rooms (room_number, type, capacity, price_per_night, extra_service_fee, status) VALUES 
-(101, 'SINGLE', 1, 120000.00, 0.00, 'AVAILABLE'),
-(102, 'DOUBLE', 2, 200000.00, 0.00, 'AVAILABLE'),
-(201, 'SUITE', 4, 350000.00, 50000.00, 'OCCUPIED'),
-(202, 'SINGLE', 1, 120000.00, 0.00, 'MAINTENANCE');
+-- =====================================================================
+-- Datos de prueba (los mismos que System_hotel.loadSeedData)
+-- =====================================================================
+INSERT INTO guests (document, full_name, email, phone) VALUES
+('1075234567', 'Carlos Pérez',         'carlos.perez@example.com', '3101234567'),
+('1075987654', 'Ana María Gómez',      'ana.gomez@example.com',    '3209876543'),
+('1076543210', 'Luis Fernando Torres', 'luis.torres@example.com',  '3154567890');
 
--- 3. Insertar Reservas (asociando IDs de huéspedes y habitaciones existentes)
-INSERT INTO reservations (reservation_id, guest_id, room_id, check_in_date, check_out_date, status) VALUES 
-('RES-2026-001', 1, 3, '2026-09-25', '2026-09-30', 'ACTIVE'),
-('RES-2026-002', 2, 1, '2026-10-01', '2026-10-05', 'PENDING');
+INSERT INTO rooms (room_number, type, capacity, price_per_night, extra_service_fee, status) VALUES
+(101, 'SINGLE', 1, 120000.00,     0.00, 'AVAILABLE'),
+(102, 'DOUBLE', 2, 200000.00,     0.00, 'AVAILABLE'),
+(201, 'SUITE',  4, 350000.00, 50000.00, 'AVAILABLE'),
+(202, 'SINGLE', 1, 120000.00,     0.00, 'MAINTENANCE');
 
--- 4. Insertar Factura de prueba (asociada a la primera reserva)
-INSERT INTO invoices (reservation_id, stay_days, night_rate, additional_services, total_amount) VALUES 
-(1, 5, 350000.00, 50000.00, 1800000.00);
+-- Historial: una estadía ya facturada y una reserva futura pendiente
+INSERT INTO reservations (reservation_code, guest_id, room_id, check_in_date, check_out_date, status) VALUES
+('RES-2026-001', 1, 3, '2026-09-25', '2026-09-30', 'COMPLETED'),
+('RES-2026-002', 2, 1, '2026-12-01', '2026-12-05', 'PENDING');
+
+-- 5 × 350.000 + 50.000 (suite) + 0 = 1.800.000 COP
+INSERT INTO invoices (reservation_id, stay_days, night_rate, extra_service_fee, additional_services, total_amount) VALUES
+(1, 5, 350000.00, 50000.00, 0.00, 1800000.00);
+
+-- =====================================================================
+-- Consulta de referencia para BR-01 (la usará ReservationRepository en Spring Boot).
+-- Hay cruce si existe una reserva PENDING/ACTIVE de la habitación con
+-- check_in_date < :nueva_salida AND check_out_date > :nueva_entrada.
+-- =====================================================================
+-- SELECT COUNT(*) FROM reservations
+--  WHERE room_id = :roomId AND status IN ('PENDING', 'ACTIVE')
+--    AND check_in_date < :checkOut AND check_out_date > :checkIn;
