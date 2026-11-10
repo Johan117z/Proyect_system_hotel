@@ -52,11 +52,17 @@ graph TD
 
 ## 2. Class Diagram (Domain & Application Model)
 
-Presents object structures, memory references, encapsulation rules, and relationships adhering to SOLID design principles.
+Domain model v2.0, aligned with the SRS, the database schema (Phase 4) and the Java code (Phase 6). Money uses `BigDecimal` (DECIMAL in the database) and states use enums.
 
 ```plantuml
 @startuml
 skinparam classAttributeIconSize 0
+
+enum RoomType {
+    SINGLE
+    DOUBLE
+    SUITE
+}
 
 enum RoomStatus {
     AVAILABLE
@@ -64,78 +70,124 @@ enum RoomStatus {
     MAINTENANCE
 }
 
-class Room {
-    - number: String
-    - type: String
-    - capacity: int
-    - pricePerNight: double
-    - status: RoomStatus
-    + Room(number: String, type: String, capacity: int, pricePerNight: double)
-    + getNumber(): String
-    + getType(): String
-    + getPricePerNight(): double
+enum ReservationStatus {
+    PENDING
+    ACTIVE
+    COMPLETED
+    CANCELLED
+    + blocksRoom(): boolean
+}
+
+interface IRoom {
+    + getNumber(): int
+    + getType(): RoomType
+    + getCapacity(): int
+    + getPricePerNight(): BigDecimal
+    + getExtraServiceFee(): BigDecimal
     + getStatus(): RoomStatus
-    + setStatus(status: RoomStatus): void
+    + changeStatus(status: RoomStatus): void
+    + setPricePerNight(price: BigDecimal): void
+    + isBookable(): boolean
+    + calculatePrice(nights: long): BigDecimal
+}
+
+abstract class Room {
+    - number: int
+    - capacity: int
+    - pricePerNight: BigDecimal
+    - status: RoomStatus
+    + calculatePrice(nights: long): BigDecimal
+}
+
+class SingleRoom
+class DoubleRoom
+class SuiteRoom {
+    - extraServiceFee: BigDecimal
+    + getExtraServiceFee(): BigDecimal
+}
+
+class RoomFactory {
+    + {static} create(type: RoomType, number: int, capacity: int, price: BigDecimal, fee: BigDecimal): Room
+}
+
+interface IGuest {
+    + getDocument(): String
+    + getFullName(): String
+}
+
+abstract class Person {
+    - document: String
+    - fullName: String
+    - email: String
+    - phone: String
 }
 
 class Guest {
-    - document: String
-    - name: String
-    - email: String
-    - phone: String
-    + Guest(document: String, name: String, email: String, phone: String)
-    + getDocument(): String
-    + getName(): String
     + updateContactInfo(email: String, phone: String): void
 }
 
 class Reservation {
-    - reservationId: String
-    - guest: Guest
-    - room: Room
+    - reservationCode: String
     - checkInDate: LocalDate
     - checkOutDate: LocalDate
-    - isActive: boolean
-    + Reservation(reservationId: String, guest: Guest, room: Room, checkInDate: LocalDate, checkOutDate: LocalDate)
-    + getReservationId(): String
-    + getRoom(): Room
-    + getGuest(): Guest
+    - status: ReservationStatus
+    + overlaps(start: LocalDate, end: LocalDate): boolean
+    + getStayDays(): long
+    + checkIn(): void
+    + checkOut(): void
     + cancel(): void
-    + hasOverlap(startDate: LocalDate, endDate: LocalDate): boolean
 }
 
-class Invoice {
-    - invoiceId: String
-    - reservation: Reservation
-    - stayDays: int
-    - nightRate: double
-    - additionalServices: double
-    - totalAmount: double
-    + Invoice(invoiceId: String, reservation: Reservation, additionalServices: double)
-    + calculateTotal(): double
-    + printDetails(): void
+class Invoice <<immutable>> {
+    - invoiceId: int
+    - stayDays: long
+    - nightRate: BigDecimal
+    - extraServiceFee: BigDecimal
+    - additionalServices: BigDecimal
+    - totalAmount: BigDecimal
+    - issueDate: LocalDateTime
 }
 
 class Hotel {
-    - rooms: List<Room>
+    - rooms: List<IRoom>
     - guests: List<Guest>
     - reservations: List<Reservation>
     - invoices: List<Invoice>
-    + registerRoom(room: Room): boolean
-    + registerGuest(guest: Guest): boolean
-    + createReservation(doc: String, roomNum: String, start: LocalDate, end: LocalDate): boolean
-    + processCheckIn(reservationId: String): boolean
-    + processCheckOut(reservationId: String, additionalServices: double): boolean
+    + registerRoom(room: IRoom): void
+    + updateRoomRate(number: int, price: BigDecimal): void
+    + changeRoomType(number: int, type: RoomType, ...): IRoom
+    + changeRoomStatus(number: int, status: RoomStatus): void
+    + deleteRoom(number: int): void
+    + registerGuest(guest: Guest): void
+    + updateGuestContact(document: String, email: String, phone: String): void
+    + createReservation(document: String, roomNumber: int, checkIn: LocalDate, checkOut: LocalDate): Reservation
+    + checkIn(code: String): Reservation
+    + checkOut(code: String, additionalServices: BigDecimal): Invoice
+    + cancelReservation(code: String): Reservation
 }
 
-Hotel "1" *-- "0..*" Room : manages
-Hotel "1" *-- "0..*" Guest : manages
+class BusinessRuleException {
+    - ruleCode: String
+}
+class EntityNotFoundException
+
+IRoom <|.. Room
+Room <|-- SingleRoom
+Room <|-- DoubleRoom
+Room <|-- SuiteRoom
+RoomFactory ..> Room : creates
+IGuest <|.. Guest
+Person <|-- Guest
+
+Hotel "1" o-- "0..*" IRoom : manages
+Hotel "1" o-- "0..*" Guest : manages
 Hotel "1" *-- "0..*" Reservation : manages
 Hotel "1" *-- "0..*" Invoice : issues
-
-Reservation "0..*" --> "1" Guest : associated to
-Reservation "0..*" --> "1" Room : assigned to
-Invoice "1" -- "1" Reservation : generated from
+Reservation "0..*" --> "1" IGuest : associated to
+Reservation "0..*" --> "1" IRoom : assigned to
+Invoice "0..1" --> "1" Reservation : generated from
+Hotel ..> BusinessRuleException : throws
+Hotel ..> EntityNotFoundException : throws
 @enduml
 ```
 
@@ -149,7 +201,7 @@ Models message exchanges between domain components to satisfy business rules (ov
 @startuml
 autonumber
 actor Receptionist as Recep
-participant "ConsoleUtils" as CLI
+participant "System_hotel (CLI)" as CLI
 participant "Hotel" as Hotel
 participant "Reservation" as Res
 participant "Room" as Room
@@ -162,22 +214,22 @@ Hotel -> Hotel : findGuest(doc)
 Hotel -> Hotel : findRoom(roomNum)
 
 alt Guest or Room not found
-    Hotel --> CLI : Returns false (Error)
+    Hotel --> CLI : throws EntityNotFoundException
     CLI --> Recep : Displays "Entity not found"
 else Entities exist
     loop For each existing reservation for target room
-        Hotel -> Res : hasOverlap(start, end)
+        Hotel -> Res : overlaps(start, end)
         Res --> Hotel : boolean
     end
 
     alt Date overlap detected (BR-01)
-        Hotel --> CLI : Returns false
+        Hotel --> CLI : throws BusinessRuleException("BR-01")
         CLI --> Recep : Displays "Room unavailable for dates"
     else Room available
         create Res
-        Hotel -> Res : new Reservation(guest, room, start, end)
+        Hotel -> Res : new Reservation(code, guest, room, start, end)
         Hotel -> Hotel : addReservation(res)
-        Hotel --> CLI : Returns true
+        Hotel --> CLI : returns Reservation (PENDING)
         CLI --> Recep : Displays "Reservation Created Successfully"
     end
 end
@@ -203,7 +255,7 @@ if (Active reservation exists?) then (No)
 else (Yes)
     :Enter additional services charge;
     :Calculate total stay duration (days);
-    :Compute Total = (Stay Days * Night Rate) + Additional Services;
+    :Compute Total = (Stay Days * Night Rate) + Room Extra Fee + Additional Services;
     :Present billing draft to receptionist;
 
     if (Payment confirmed by guest?) then (No)
@@ -212,7 +264,7 @@ else (Yes)
     else (Yes)
         :Generate Invoice record;
         :Set Reservation status to COMPLETED;
-        :Update Room status to AVAILABLE / MAINTENANCE;
+        :Update Room status to AVAILABLE;
         :Print final Invoice receipt;
         stop
     endif
