@@ -6,6 +6,8 @@ package com.mycompany.system_hotel;
  */
 public class BusinessRuleException extends RuntimeException {
 
+    private static final long serialVersionUID = 1L;
+
     private final String ruleCode;
 
     public BusinessRuleException(String ruleCode, String message) {

@@ -44,24 +44,45 @@ public final class ConsoleUtils {
         }
     }
 
-    /** Lee un valor en pesos. Acepta "120000", "120.000" o "120000,50". */
+    /**
+     * Lee un valor en pesos. Acepta "120000", "120.000", "95500,50", "120.000,50" y "95.5".
+     * Rechaza los formatos ambiguos en lugar de adivinar.
+     */
     public static BigDecimal readMoney(String message, boolean allowZero) {
         while (true) {
             System.out.print(message);
-            String input = SCANNER.nextLine().trim().replace("$", "").replace(" ", "");
-            String normalized = input.contains(",")
-                    ? input.replace(".", "").replace(",", ".")
-                    : input.replace(".", "");
-            try {
-                BigDecimal value = new BigDecimal(normalized);
-                if (value.signum() > 0 || (allowZero && value.signum() == 0)) {
-                    return value;
-                }
+            BigDecimal value = parseMoney(SCANNER.nextLine());
+            if (value == null) {
+                System.out.println("  ! Valor inválido. Ejemplos: 120000, 120.000 o 95500,50.");
+            } else if (value.signum() > 0 || (allowZero && value.signum() == 0)) {
+                return value;
+            } else {
                 System.out.println(allowZero ? "  ! El valor no puede ser negativo." : "  ! El valor debe ser mayor que cero.");
-            } catch (NumberFormatException e) {
-                System.out.println("  ! Ingrese un valor numérico válido.");
             }
         }
+    }
+
+    /**
+     * Convierte un texto en pesos a BigDecimal, o devuelve null si el formato no es válido.
+     * <ul>
+     *   <li>Punto seguido de exactamente 3 dígitos = separador de miles: "120.000" → 120000.</li>
+     *   <li>Coma = decimales (formato colombiano): "120.000,50" → 120000.50.</li>
+     *   <li>Punto seguido de 1 o 2 dígitos = decimales: "95.5" → 95.50.</li>
+     * </ul>
+     */
+    static BigDecimal parseMoney(String text) {
+        String input = text == null ? "" : text.trim().replace("$", "").replace(" ", "");
+        String normalized;
+        if (input.matches("\\d+") || input.matches("\\d+\\.\\d{1,2}")) {
+            normalized = input;
+        } else if (input.matches("\\d{1,3}(\\.\\d{3})+")) {
+            normalized = input.replace(".", "");
+        } else if (input.matches("\\d+,\\d{1,2}") || input.matches("\\d{1,3}(\\.\\d{3})+,\\d{1,2}")) {
+            normalized = input.replace(".", "").replace(",", ".");
+        } else {
+            return null;
+        }
+        return new BigDecimal(normalized);
     }
 
     public static LocalDate readDate(String message) {
@@ -79,9 +100,12 @@ public final class ConsoleUtils {
         return date.format(UI_DATE);
     }
 
+    /** Formato en pesos: sin decimales si el valor es entero ("$ 120.000 COP"), con centavos si los tiene ("$ 25.000,50 COP"). */
     public static String formatCop(BigDecimal value) {
         NumberFormat format = NumberFormat.getCurrencyInstance(CO);
-        format.setMaximumFractionDigits(0);
+        int decimals = value.stripTrailingZeros().scale() > 0 ? 2 : 0;
+        format.setMinimumFractionDigits(decimals);
+        format.setMaximumFractionDigits(decimals);
         return format.format(value) + " COP";
     }
 }

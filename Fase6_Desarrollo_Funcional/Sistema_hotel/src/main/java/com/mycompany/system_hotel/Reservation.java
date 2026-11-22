@@ -52,11 +52,22 @@ public class Reservation {
         return ChronoUnit.DAYS.between(checkInDate, checkOutDate);
     }
 
-    /** FR-08 / BR-02: solo una reserva PENDING puede hacer check-in. */
-    public void checkIn() {
+    /**
+     * FR-08 / BR-02: solo una reserva PENDING puede hacer check-in, y solo dentro de su periodo:
+     * desde la fecha de entrada hasta la noche anterior a la salida (US-04: reserva para hoy).
+     */
+    public void checkIn(LocalDate today) {
         if (status != ReservationStatus.PENDING) {
             throw new BusinessRuleException("BR-02",
                     "Solo se puede hacer check-in de reservas pendientes. Estado actual: " + status + ".");
+        }
+        if (today.isBefore(checkInDate)) {
+            throw new BusinessRuleException("BR-02",
+                    "El check-in de esta reserva es a partir del " + ConsoleUtils.formatDate(checkInDate) + ".");
+        }
+        if (!today.isBefore(checkOutDate)) {
+            throw new BusinessRuleException("BR-02",
+                    "El periodo de la reserva terminó el " + ConsoleUtils.formatDate(checkOutDate) + ".");
         }
         if (room.getStatus() != RoomStatus.AVAILABLE) {
             throw new BusinessRuleException("BR-02",

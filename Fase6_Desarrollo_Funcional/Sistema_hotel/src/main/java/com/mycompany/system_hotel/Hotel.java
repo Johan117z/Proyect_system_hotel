@@ -159,6 +159,9 @@ public class Hotel {
         if (checkInDate == null || checkOutDate == null) {
             throw new IllegalArgumentException("Las fechas de entrada y salida son obligatorias.");
         }
+        if (!checkOutDate.isAfter(checkInDate)) {
+            throw new IllegalArgumentException("La fecha de salida debe ser posterior a la de entrada.");
+        }
         if (checkInDate.isBefore(LocalDate.now())) {
             throw new BusinessRuleException("BR-04", "La fecha de entrada no puede ser anterior a hoy.");
         }
@@ -175,12 +178,13 @@ public class Hotel {
         Reservation reservation = new Reservation(nextReservationCode(checkInDate), guest, room,
                 checkInDate, checkOutDate);
         reservations.add(reservation);
+        reservationSequence++;   // solo se consume el número si la reserva se creó
         return reservation;
     }
 
     /** Código RES-AAAA-NNN, igual al formato de reservations.reservation_code. */
     private String nextReservationCode(LocalDate checkInDate) {
-        return String.format("RES-%d-%03d", checkInDate.getYear(), reservationSequence++);
+        return String.format("RES-%d-%03d", checkInDate.getYear(), reservationSequence);
     }
 
     public Reservation findReservation(String reservationCode) {
@@ -194,16 +198,24 @@ public class Hotel {
     /** FR-08 */
     public Reservation checkIn(String reservationCode) {
         Reservation reservation = findReservation(reservationCode);
-        reservation.checkIn();
+        reservation.checkIn(LocalDate.now());
         return reservation;
     }
 
-    /** FR-09: cierra la reserva y emite la factura en una sola operación. */
+    /**
+     * FR-09: cierra la reserva y emite la factura en una sola operación.
+     * Los servicios adicionales se validan antes de cerrar la reserva, para que nunca
+     * quede una reserva COMPLETED sin factura.
+     */
     public Invoice checkOut(String reservationCode, BigDecimal additionalServices) {
         Reservation reservation = findReservation(reservationCode);
+        if (additionalServices == null || additionalServices.signum() < 0) {
+            throw new IllegalArgumentException("Los servicios adicionales no pueden ser negativos.");
+        }
         reservation.checkOut();
-        Invoice invoice = new Invoice(invoiceSequence++, reservation, additionalServices);
+        Invoice invoice = new Invoice(invoiceSequence, reservation, additionalServices);
         invoices.add(invoice);
+        invoiceSequence++;
         return invoice;
     }
 
