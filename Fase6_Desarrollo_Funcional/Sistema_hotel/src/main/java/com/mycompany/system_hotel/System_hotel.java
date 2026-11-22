@@ -5,8 +5,8 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * Interfaz de consola (alcance de la Fase 2: RS-01). Solo lee datos, llama a Hotel y muestra resultados;
- * no contiene reglas de negocio (NFR-02).
+ * Interfaz de consola (RS-01). Solo lee datos, llama a Hotel y muestra resultados;
+ * no contiene reglas de negocio (RNF01). Cada menú tiene opciones numeradas y "0. Volver" (RNF03).
  */
 public class System_hotel {
 
@@ -23,10 +23,9 @@ public class System_hotel {
                 case 1 -> roomMenu();
                 case 2 -> guestMenu();
                 case 3 -> reservationMenu();
-                case 4 -> run(System_hotel::checkIn);
-                case 5 -> run(System_hotel::checkOut);
-                case 6 -> showInvoices();
-                case 7 -> showReport();
+                case 4 -> stayMenu();
+                case 5 -> billingMenu();
+                case 6 -> showReport();
                 case 0 -> System.out.println("Gracias por usar el sistema.");
                 default -> System.out.println("  ! Opción inválida.");
             }
@@ -34,7 +33,7 @@ public class System_hotel {
         } while (option != 0);
     }
 
-    /** Ejecuta una acción y muestra cualquier error de validación o de negocio sin cerrar el programa. */
+    /** Ejecuta una acción y muestra cualquier error de validación o de negocio sin cerrar el programa (RNF04). */
     private static void run(Runnable action) {
         try {
             action.run();
@@ -45,46 +44,49 @@ public class System_hotel {
 
     private static void showMainMenu() {
         System.out.println("============= " + hotel.getName().toUpperCase() + " =============");
-        System.out.println("1. Gestión de habitaciones");
-        System.out.println("2. Gestión de huéspedes");
-        System.out.println("3. Gestión de reservas");
-        System.out.println("4. Check-in");
-        System.out.println("5. Check-out y facturación");
-        System.out.println("6. Facturas emitidas");
-        System.out.println("7. Reporte general");
+        System.out.println("1. Habitaciones");
+        System.out.println("2. Huéspedes");
+        System.out.println("3. Reservas y disponibilidad");
+        System.out.println("4. Estadía (check-in, servicios, check-out)");
+        System.out.println("5. Facturación y pagos");
+        System.out.println("6. Reporte general");
         System.out.println("0. Salir");
         System.out.println("===================================================");
     }
 
-    // ===================== Habitaciones (FR-01 a FR-04) =====================
+    // ===================== Épica 1: Habitaciones (HU-01 a HU-04) =====================
 
     private static void roomMenu() {
         int option;
         do {
             System.out.println("--- HABITACIONES ---");
             System.out.println("1. Registrar habitación");
-            System.out.println("2. Ver todas");
-            System.out.println("3. Ver disponibles");
-            System.out.println("4. Ver ocupadas");
-            System.out.println("5. Cambiar tarifa");
-            System.out.println("6. Cambiar tipo");
-            System.out.println("7. Cambiar estado (mantenimiento)");
-            System.out.println("8. Eliminar habitación");
+            System.out.println("2. Listar todas");
+            System.out.println("3. Listar disponibles");
+            System.out.println("4. Listar ocupadas");
+            System.out.println("5. Listar en mantenimiento/limpieza");
+            System.out.println("6. Modificar tarifa");
+            System.out.println("7. Modificar tipo y capacidad");
+            System.out.println("8. Cambiar estado (habilitar o enviar a mantenimiento)");
+            System.out.println("9. Eliminar habitación");
             System.out.println("0. Volver");
             option = ConsoleUtils.readInt("Opción: ");
             switch (option) {
                 case 1 -> run(System_hotel::registerRoom);
-                case 2 -> printRooms(hotel.getAllRooms(), "TODAS LAS HABITACIONES");
-                case 3 -> printRooms(hotel.getRoomsByStatus(RoomStatus.AVAILABLE), "DISPONIBLES");
-                case 4 -> printRooms(hotel.getRoomsByStatus(RoomStatus.OCCUPIED), "OCUPADAS");
-                case 5 -> run(() -> {
+                case 2 -> printList(hotel.getAllRooms(), "No hay habitaciones registradas.");
+                case 3 -> printList(hotel.getRoomsByStatus(RoomStatus.AVAILABLE), "No hay habitaciones disponibles.");
+                case 4 -> printList(hotel.getRoomsByStatus(RoomStatus.OCCUPIED), "No hay habitaciones ocupadas.");
+                case 5 -> printList(hotel.getRoomsByStatus(RoomStatus.MAINTENANCE), "No hay habitaciones en mantenimiento.");
+                case 6 -> run(() -> {
                     int number = ConsoleUtils.readInt("Número de habitación: ");
+                    hotel.findRoom(number);
                     BigDecimal price = ConsoleUtils.readMoney("Nueva tarifa por noche: ", false);
                     hotel.updateRoomRate(number, price);
                     System.out.println("Tarifa actualizada.");
                 });
-                case 6 -> run(() -> {
+                case 7 -> run(() -> {
                     int number = ConsoleUtils.readInt("Número de habitación: ");
+                    hotel.findRoom(number);
                     RoomType type = RoomType.fromText(ConsoleUtils.readText("Nuevo tipo (SINGLE / DOUBLE / SUITE): "));
                     int capacity = ConsoleUtils.readInt("Capacidad: ");
                     BigDecimal price = ConsoleUtils.readMoney("Tarifa por noche: ", false);
@@ -92,15 +94,22 @@ public class System_hotel {
                             ? ConsoleUtils.readMoney("Cargo extra por estadía: ", true) : BigDecimal.ZERO;
                     System.out.println("Actualizada: " + hotel.changeRoomType(number, type, capacity, price, fee));
                 });
-                case 7 -> run(() -> {
+                case 8 -> run(() -> {
                     int number = ConsoleUtils.readInt("Número de habitación: ");
+                    hotel.findRoom(number);
                     RoomStatus status = RoomStatus.fromText(ConsoleUtils.readText("Nuevo estado (AVAILABLE / MAINTENANCE): "));
                     hotel.changeRoomStatus(number, status);
                     System.out.println("Estado actualizado.");
                 });
-                case 8 -> run(() -> {
-                    hotel.deleteRoom(ConsoleUtils.readInt("Número de habitación: "));
-                    System.out.println("Habitación eliminada del inventario.");
+                case 9 -> run(() -> {
+                    int number = ConsoleUtils.readInt("Número de habitación: ");
+                    hotel.findRoom(number);
+                    if (ConsoleUtils.confirm("¿Confirma la eliminación de la habitación " + number + "?")) {
+                        hotel.deleteRoom(number);
+                        System.out.println("Habitación eliminada del inventario.");
+                    } else {
+                        System.out.println("Operación cancelada.");
+                    }
                 });
                 case 0 -> { }
                 default -> System.out.println("  ! Opción inválida.");
@@ -117,56 +126,55 @@ public class System_hotel {
         BigDecimal fee = type == RoomType.SUITE
                 ? ConsoleUtils.readMoney("Cargo extra por estadía: ", true) : BigDecimal.ZERO;
         hotel.registerRoom(RoomFactory.create(type, number, capacity, price, fee));
-        System.out.println("Habitación registrada.");
+        System.out.println("Habitación registrada en estado AVAILABLE.");
     }
 
-    private static void printRooms(List<IRoom> list, String title) {
-        if (list.isEmpty()) {
-            System.out.println("No hay habitaciones en: " + title + ".");
-            return;
-        }
-        System.out.println(title + ":");
-        list.forEach(r -> System.out.println("  - " + r));
-    }
-
-    // ===================== Huéspedes (FR-05, FR-06) =====================
+    // ===================== Épica 2: Huéspedes (HU-05 a HU-08) =====================
 
     private static void guestMenu() {
         int option;
         do {
             System.out.println("--- HUÉSPEDES ---");
             System.out.println("1. Registrar huésped");
-            System.out.println("2. Buscar por documento");
-            System.out.println("3. Actualizar contacto");
-            System.out.println("4. Ver todos");
+            System.out.println("2. Buscar por nombre, apellido o documento");
+            System.out.println("3. Actualizar datos");
+            System.out.println("4. Eliminar huésped");
+            System.out.println("5. Listar todos");
             System.out.println("0. Volver");
             option = ConsoleUtils.readInt("Opción: ");
             switch (option) {
                 case 1 -> run(() -> {
-                    String doc = ConsoleUtils.readText("Documento: ");
+                    String doc = ConsoleUtils.readText("Documento (6 a 10 dígitos): ");
                     String name = ConsoleUtils.readText("Nombre completo: ");
                     String email = ConsoleUtils.readText("Correo: ");
-                    String phone = ConsoleUtils.readText("Teléfono: ");
+                    String phone = ConsoleUtils.readText("Teléfono (10 dígitos): ");
                     hotel.registerGuest(new Guest(doc, name, email, phone));
                     System.out.println("Huésped registrado.");
                 });
-                case 2 -> run(() -> System.out.println("  " + hotel.findGuest(ConsoleUtils.readText("Documento: "))));
+                case 2 -> run(() -> printList(
+                        hotel.searchGuests(ConsoleUtils.readText("Nombre, apellido o documento: ")),
+                        "No se encontraron resultados."));
                 case 3 -> run(() -> {
                     String doc = ConsoleUtils.readText("Documento: ");
-                    hotel.findGuest(doc);
-                    String email = ConsoleUtils.readText("Nuevo correo: ");
-                    String phone = ConsoleUtils.readText("Nuevo teléfono: ");
-                    hotel.updateGuestContact(doc, email, phone);
-                    System.out.println("Contacto actualizado.");
+                    Guest guest = hotel.findGuest(doc);
+                    System.out.println("  Actual: " + guest);
+                    String name = ConsoleUtils.readText("Nombre completo: ");
+                    String email = ConsoleUtils.readText("Correo: ");
+                    String phone = ConsoleUtils.readText("Teléfono: ");
+                    hotel.updateGuest(doc, name, email, phone);
+                    System.out.println("Datos actualizados.");
                 });
-                case 4 -> {
-                    List<Guest> list = hotel.getAllGuests();
-                    if (list.isEmpty()) {
-                        System.out.println("No hay huéspedes registrados.");
+                case 4 -> run(() -> {
+                    String doc = ConsoleUtils.readText("Documento: ");
+                    Guest guest = hotel.findGuest(doc);
+                    if (ConsoleUtils.confirm("¿Confirma la eliminación de " + guest.getFullName() + "?")) {
+                        hotel.deleteGuest(doc);
+                        System.out.println("Huésped eliminado.");
                     } else {
-                        list.forEach(g -> System.out.println("  - " + g));
+                        System.out.println("Operación cancelada.");
                     }
-                }
+                });
+                case 5 -> printList(hotel.getAllGuests(), "No hay huéspedes registrados.");
                 case 0 -> { }
                 default -> System.out.println("  ! Opción inválida.");
             }
@@ -174,35 +182,46 @@ public class System_hotel {
         } while (option != 0);
     }
 
-    // ===================== Reservas (FR-07, FR-10) =====================
+    // ===================== Épica 3: Reservas (HU-09 a HU-11) =====================
 
     private static void reservationMenu() {
         int option;
         do {
-            System.out.println("--- RESERVAS ---");
+            System.out.println("--- RESERVAS Y DISPONIBILIDAD ---");
             System.out.println("1. Crear reserva");
-            System.out.println("2. Ver todas");
-            System.out.println("3. Cancelar reserva");
+            System.out.println("2. Consultar disponibilidad por fechas");
+            System.out.println("3. Listar reservas");
+            System.out.println("4. Cancelar reserva");
             System.out.println("0. Volver");
             option = ConsoleUtils.readInt("Opción: ");
             switch (option) {
                 case 1 -> run(() -> {
                     String doc = ConsoleUtils.readText("Documento del huésped: ");
+                    hotel.findGuest(doc);
                     int room = ConsoleUtils.readInt("Número de habitación: ");
                     LocalDate in = ConsoleUtils.readDate("Fecha de entrada");
                     LocalDate out = ConsoleUtils.readDate("Fecha de salida");
                     System.out.println("Reserva creada: " + hotel.createReservation(doc, room, in, out));
                 });
-                case 2 -> {
-                    List<Reservation> list = hotel.getAllReservations();
-                    if (list.isEmpty()) {
-                        System.out.println("No hay reservas.");
-                    } else {
-                        list.forEach(r -> System.out.println("  - " + r));
+                case 2 -> run(() -> {
+                    LocalDate in = ConsoleUtils.readDate("Fecha de entrada");
+                    LocalDate out = ConsoleUtils.readDate("Fecha de salida");
+                    printList(hotel.getAvailableRooms(in, out),
+                            "No hay habitaciones disponibles en el rango de fechas seleccionado.");
+                });
+                case 3 -> printList(hotel.getAllReservations(), "No hay reservas registradas.");
+                case 4 -> run(() -> {
+                    String code = ConsoleUtils.readText("Código de reserva (RES-AAAA-NNN): ");
+                    Reservation reservation = hotel.findReservation(code);
+                    if (reservation.getStatus() != ReservationStatus.PENDING) {
+                        hotel.cancelReservation(code);   // informa por qué no se puede cancelar (HU-10)
                     }
-                }
-                case 3 -> run(() -> System.out.println("Reserva cancelada: "
-                        + hotel.cancelReservation(ConsoleUtils.readText("Código de reserva (RES-AAAA-NNN): "))));
+                    if (ConsoleUtils.confirm("¿Confirma la cancelación de " + reservation.getReservationCode() + "?")) {
+                        System.out.println("Reserva cancelada: " + hotel.cancelReservation(code));
+                    } else {
+                        System.out.println("Operación cancelada.");
+                    }
+                });
                 case 0 -> { }
                 default -> System.out.println("  ! Opción inválida.");
             }
@@ -210,45 +229,131 @@ public class System_hotel {
         } while (option != 0);
     }
 
-    // ===================== Operación (FR-08, FR-09) =====================
+    // ===================== Épica 4: Estadía (HU-12, HU-13) =====================
 
-    private static void checkIn() {
-        Reservation r = hotel.checkIn(ConsoleUtils.readText("Código de reserva: "));
-        System.out.println("Check-in realizado. Habitación " + r.getRoom().getNumber() + " ahora OCCUPIED.");
+    private static void stayMenu() {
+        int option;
+        do {
+            System.out.println("--- ESTADÍA ---");
+            System.out.println("1. Check-in");
+            System.out.println("2. Registrar servicio adicional");
+            System.out.println("3. Ver cuenta de una estadía");
+            System.out.println("4. Check-out");
+            System.out.println("0. Volver");
+            option = ConsoleUtils.readInt("Opción: ");
+            switch (option) {
+                case 1 -> run(() -> {
+                    Reservation r = hotel.checkIn(ConsoleUtils.readText("Código de reserva: "));
+                    System.out.println("Check-in realizado. Habitación " + r.getRoom().getNumber() + " ahora OCCUPIED.");
+                });
+                case 2 -> run(() -> {
+                    String code = ConsoleUtils.readText("Código de reserva: ");
+                    hotel.findReservation(code);
+                    String description = ConsoleUtils.readText("Descripción (ej. Minibar): ");
+                    BigDecimal amount = ConsoleUtils.readMoney("Valor: ", false);
+                    System.out.println("Servicio registrado: " + hotel.addService(code, description, amount));
+                });
+                case 3 -> run(() -> showAccount(hotel.findReservation(ConsoleUtils.readText("Código de reserva: "))));
+                case 4 -> run(() -> {
+                    Reservation r = hotel.checkOut(ConsoleUtils.readText("Código de reserva: "));
+                    System.out.println("Check-out realizado. Habitación " + r.getRoom().getNumber()
+                            + " en MAINTENANCE (mantenimiento/limpieza).");
+                });
+                case 0 -> { }
+                default -> System.out.println("  ! Opción inválida.");
+            }
+            System.out.println();
+        } while (option != 0);
     }
 
-    private static void checkOut() {
-        String code = ConsoleUtils.readText("Código de reserva: ");
-        hotel.findReservation(code);
-        BigDecimal extras = ConsoleUtils.readMoney("Servicios adicionales consumidos (0 si no hay): ", true);
-        Invoice invoice = hotel.checkOut(code, extras);
-        System.out.println("\n--- FACTURA GENERADA ---\n" + invoice);
-    }
-
-    private static void showInvoices() {
-        List<Invoice> list = hotel.getAllInvoices();
-        if (list.isEmpty()) {
-            System.out.println("No hay facturas emitidas.");
-            return;
+    private static void showAccount(Reservation reservation) {
+        System.out.println("  " + reservation);
+        List<AdditionalService> services = reservation.getServices();
+        if (services.isEmpty()) {
+            System.out.println("  Sin servicios adicionales.");
+        } else {
+            services.forEach(s -> System.out.println("  · " + s));
         }
-        list.forEach(i -> System.out.println("-----------------------------------\n" + i));
-        System.out.println("-----------------------------------");
+        System.out.println("  Servicios: " + ConsoleUtils.formatCop(reservation.getServicesTotal()));
+        hotel.findInvoiceFor(reservation).ifPresentOrElse(
+                i -> System.out.println("  Factura No. " + i.getInvoiceId() + " por "
+                        + ConsoleUtils.formatCop(i.getTotalAmount()) + " — "
+                        + (hotel.isPaid(i) ? "PAGADA" : "PENDIENTE DE PAGO")),
+                () -> System.out.println("  Sin factura emitida."));
     }
+
+    // ===================== Épica 5: Facturación (HU-14) =====================
+
+    private static void billingMenu() {
+        int option;
+        do {
+            System.out.println("--- FACTURACIÓN Y PAGOS ---");
+            System.out.println("1. Generar factura de una estadía");
+            System.out.println("2. Registrar pago de una factura");
+            System.out.println("3. Listar facturas");
+            System.out.println("0. Volver");
+            option = ConsoleUtils.readInt("Opción: ");
+            switch (option) {
+                case 1 -> run(() -> {
+                    Invoice invoice = hotel.generateInvoice(ConsoleUtils.readText("Código de reserva: "));
+                    System.out.println("\n--- FACTURA GENERADA ---\n" + invoice);
+                });
+                case 2 -> run(() -> {
+                    int id = ConsoleUtils.readInt("Número de factura: ");
+                    Invoice invoice = hotel.findInvoice(id);
+                    if (hotel.isPaid(invoice)) {
+                        System.out.println("  La factura No. " + id + " ya está pagada.");
+                        return;
+                    }
+                    System.out.println("  Total a pagar: " + ConsoleUtils.formatCop(invoice.getTotalAmount()));
+                    PaymentMethod method = PaymentMethod.fromText(
+                            ConsoleUtils.readText("Medio de pago (Efectivo / Tarjeta / Transferencia): "));
+                    System.out.println(hotel.registerPayment(id, method) + ". Cuenta saldada.");
+                });
+                case 3 -> {
+                    List<Invoice> list = hotel.getAllInvoices();
+                    if (list.isEmpty()) {
+                        System.out.println("No hay facturas emitidas.");
+                    } else {
+                        list.forEach(i -> System.out.println("-----------------------------------\n" + i
+                                + "\nEstado: " + (hotel.isPaid(i) ? "PAGADA" : "PENDIENTE DE PAGO")));
+                        System.out.println("-----------------------------------");
+                    }
+                }
+                case 0 -> { }
+                default -> System.out.println("  ! Opción inválida.");
+            }
+            System.out.println();
+        } while (option != 0);
+    }
+
+    // ===================== Reporte =====================
 
     private static void showReport() {
         System.out.println("--- REPORTE GENERAL ---");
         System.out.println("Habitaciones: " + hotel.getAllRooms().size());
-        System.out.println("Disponibles: " + hotel.getRoomsByStatus(RoomStatus.AVAILABLE).size());
-        System.out.println("Ocupadas: " + hotel.getRoomsByStatus(RoomStatus.OCCUPIED).size());
-        System.out.println("En mantenimiento: " + hotel.getRoomsByStatus(RoomStatus.MAINTENANCE).size());
+        System.out.println("  Disponibles: " + hotel.getRoomsByStatus(RoomStatus.AVAILABLE).size());
+        System.out.println("  Ocupadas: " + hotel.getRoomsByStatus(RoomStatus.OCCUPIED).size());
+        System.out.println("  En mantenimiento/limpieza: " + hotel.getRoomsByStatus(RoomStatus.MAINTENANCE).size());
         System.out.println("Huéspedes: " + hotel.getAllGuests().size());
         System.out.println("Reservas: " + hotel.getAllReservations().size());
         BigDecimal billed = hotel.getAllInvoices().stream()
                 .map(Invoice::getTotalAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
-        System.out.println("Facturas: " + hotel.getAllInvoices().size() + " | Total facturado: " + ConsoleUtils.formatCop(billed));
+        BigDecimal collected = hotel.getAllPayments().stream()
+                .map(Payment::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        System.out.println("Facturas: " + hotel.getAllInvoices().size() + " | Facturado: " + ConsoleUtils.formatCop(billed)
+                + " | Cobrado: " + ConsoleUtils.formatCop(collected));
     }
 
-    /** Mismos datos de prueba que script_hotel_db.sql. */
+    private static void printList(List<?> list, String emptyMessage) {
+        if (list.isEmpty()) {
+            System.out.println(emptyMessage);
+            return;
+        }
+        list.forEach(item -> System.out.println("  - " + item));
+    }
+
+    /** Mismas habitaciones y huéspedes que script_hotel_db.sql. */
     private static void loadSeedData() {
         hotel.registerRoom(RoomFactory.create(RoomType.SINGLE, 101, 1, new BigDecimal("120000"), null));
         hotel.registerRoom(RoomFactory.create(RoomType.DOUBLE, 102, 2, new BigDecimal("200000"), null));

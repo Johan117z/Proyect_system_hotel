@@ -3,7 +3,7 @@ package com.mycompany.system_hotel;
 import java.math.BigDecimal;
 
 /**
- * Clase base abstracta de las habitaciones. Concentra las validaciones comunes (NFR-01);
+ * Clase base abstracta de las habitaciones. Concentra las validaciones comunes (RNF04);
  * cada subclase define su tipo y, si aplica, su forma de calcular el precio.
  */
 public abstract class Room implements IRoom {
