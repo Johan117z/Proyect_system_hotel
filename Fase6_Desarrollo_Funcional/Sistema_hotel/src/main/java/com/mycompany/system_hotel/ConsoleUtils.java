@@ -85,6 +85,21 @@ public final class ConsoleUtils {
         return new BigDecimal(normalized);
     }
 
+    /** Pide confirmación (S/N) antes de una acción que no se puede deshacer. */
+    public static boolean confirm(String message) {
+        while (true) {
+            System.out.print(message + " (S/N): ");
+            String answer = SCANNER.nextLine().trim().toUpperCase();
+            if (answer.equals("S") || answer.equals("SI") || answer.equals("SÍ")) {
+                return true;
+            }
+            if (answer.equals("N") || answer.equals("NO")) {
+                return false;
+            }
+            System.out.println("  ! Responda S o N.");
+        }
+    }
+
     public static LocalDate readDate(String message) {
         while (true) {
             System.out.print(message + " (dd/mm/aaaa): ");

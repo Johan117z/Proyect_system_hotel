@@ -1,7 +1,7 @@
 package com.mycompany.system_hotel;
 
 /**
- * Tipos de habitación (FR-01). Coincide con rooms.type en la BD.
+ * Tipos de habitación (RF-01). Coincide con rooms.type en la BD.
  */
 public enum RoomType {
     SINGLE,
