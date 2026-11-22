@@ -2,64 +2,70 @@
 
 ## 📌 Relationship to Phase 2 (SRS)
 
-The Phase 2 SRS (`Fase2_Requerimientos`) defines the system as a **Java console (CLI) application** with no graphical interface (restriction **RS-01**) and no database persistence (restriction **RS-02**). Those restrictions still apply to the Phase 2 deliverable and are not changed here.
+The SRS v2.0 (`Fase2_Requerimientos/SRS.md`) defines the system as a **Java console (CLI) application** (restriction **RS-01**). The material in this folder is a **proposal for how the project could evolve**: a graphical interface for a later version. It is not the console deliverable required by the SRS.
 
-The material in this folder is a **proposal for how the project could evolve**: a graphical interface for a later version of the system. It is not the console deliverable required by the SRS.
+The prototype follows the same model as the SRS v2.0, the database (Phase 4) and the Java code (Phase 6): the 14 user stories, the same business rules (RN-01 to RN-15) and the same seed data.
 
 ## 📂 Contents of this folder
 
 | File | Description |
 | :--- | :--- |
-| `index.html` | Interactive HTML/JS prototype ("Gran Continental") that covers the 10 functional requirements (FR-01 to FR-10) in the browser |
+| `index.html` | Interactive HTML/JS prototype ("Gran Continental") covering the 14 user stories / RF-01 to RF-14 in the browser |
 | `Mockup Hotel.md` | Link to the first visual exploration made in Figma |
 
 ## ▶️ How to open the prototype
 
-Open `index.html` in any modern browser. No installation or server is needed; data is kept in the browser's `localStorage`.
+Open `index.html` in any modern browser. No installation or server is needed; data is kept in the browser's `localStorage` (the **Restablecer datos demo** option reloads the seed data).
 
 On the login screen, use the **quick access** buttons to enter as one of two demo users:
 
 | Role | What it can do |
 | :--- | :--- |
-| Administrator | Everything, including deleting rooms, voiding invoices and resetting the demo data |
-| Receptionist | Rooms (edit, cleaning), guests, reservations, check-in / check-out, services and invoices (view, issue) |
+| Administrator | Everything, including deleting rooms and guests, changing rates and room status, and resetting the demo data |
+| Receptionist | Rooms (edit, enable after cleaning), guests, reservations, check-in / check-out, services, invoices and payments |
 
-The login only demonstrates **role-based access control**. Credentials are stored in the page itself and are not secure. Risk **R-02 (no access control)** from Annex C of the SRS stays open until receptionist authentication is formally designed.
+The login only demonstrates **role-based access control**. Credentials are stored in the page itself and are not secure. Risk **R-02 (no access control)** of the SRS stays open until authentication is implemented in the application.
 
 ## 🖥️ Screens
 
-| Screen | Requirements |
+| Screen | User stories |
 | :--- | :--- |
-| Panel general (dashboard) | FR-02 |
-| Habitaciones | FR-01 to FR-04 |
-| Huéspedes | FR-05, FR-06 |
-| Reservas | FR-07, FR-10 |
-| Disponibilidad | FR-02, FR-07 (BR-01 date overlap) |
-| Estadías (check-in / check-out, services) | FR-08, FR-09 |
-| Facturación | FR-09 |
+| Panel general (dashboard) | HU-04 |
+| Habitaciones | HU-01 to HU-04 |
+| Huéspedes | HU-05 to HU-08 |
+| Reservas | HU-09, HU-10 |
+| Disponibilidad | HU-11 |
+| Estadías (check-in, services, invoice, payment, check-out) | HU-12 to HU-14 |
+| Facturación | HU-14 |
 
-## ⚠️ Known differences from the canonical model
+## ✅ Alignment with the model
 
-The prototype was built before the v2.0 alignment described in `docs/MATRIZ_TRAZABILIDAD.md`. These points do **not** yet match the SRS, the database (Phase 4) and the Java code (Phase 6), and must be fixed before the prototype is used as the base for a real GUI:
+| Rule | In the prototype |
+| :--- | :--- |
+| Guest data (RF-05) | Document 6–10 digits, phone 10 digits, valid email; full name (first + last names) up to 60 characters |
+| Rooms (RF-01) | Number 1–65535, type Sencilla / Doble / Suite, capacity, rate and extra fee (Suite only) |
+| Reservation code | `RES-YYYY-NNN` |
+| No overlap, no past dates, no rooms in maintenance (RN-05, RN-13) | Checked when creating a reservation and in the availability search |
+| Check-in (RN-08) | Pending reservation, within its period, room available |
+| Billing (RN-11, RN-12) | Reservation nights × rate + Suite fee + services; the invoice is issued during the stay, cannot be changed or voided, and no services can be added after it |
+| Check-out (RN-09, RN-10) | Only with the invoice paid; the room goes to *Mantenimiento/Limpieza* |
+| Currency | `$ 1.830.000 COP` (Colombian format) |
 
-| Topic | Prototype | Canonical model (DB + Java) |
-| :--- | :--- | :--- |
-| Room status | `Disponible / Ocupada / Mantenimiento` | `AVAILABLE / OCCUPIED / MAINTENANCE` |
-| Reservation status | `Activa / En curso / Finalizada / Cancelada` | `PENDING / ACTIVE / COMPLETED / CANCELLED` |
-| Room after check-out | Goes to `Mantenimiento` | Goes back to `AVAILABLE` (BR-06) |
-| Invoices | Can be voided and deleted; have payment status (`Pagada / Pendiente`) | Immutable (BR-03); no payment status |
-| Guest document | 5–20 alphanumeric characters | 6–10 digits |
-| Guest phone | Optional, 7–20 characters | Required, 10 digits |
-| Guest name | `nombre` + `apellido` | `full_name` (max 60) |
-| Reservation code | `R-1`, `R-2`… | `RES-YYYY-NNN` |
-| Nights billed | From actual check-in to today | Reserved nights (check-in to check-out date) |
-| Suite extra fee | Not modelled | Fixed fee per stay (`extra_service_fee`) |
-| Seed data | Rooms 101–103, other prices and guests | Same data as `script_hotel_db.sql` |
-| Currency format | `COP $120,000.00` (US format) | `$ 120.000 COP` (Colombian format) |
+The seed stay (Luis Fernando Torres, Suite 201, 5 nights, Lavandería $30.000) produces the same invoice as the database and the Java application: **$ 1.830.000 COP**.
+
+## 🔤 Labels used by the interface
+
+The interface shows Spanish labels for the model states:
+
+| Model | Interface |
+| :--- | :--- |
+| Room `AVAILABLE` / `OCCUPIED` / `MAINTENANCE` | Disponible / Ocupada / Mantenimiento-Limpieza |
+| Reservation `PENDING` / `ACTIVE` / `COMPLETED` / `CANCELLED` | Pendiente / Activa / Completada / Cancelada |
+| Payment `CASH` / `CARD` / `TRANSFER` | Efectivo / Tarjeta / Transferencia |
 
 ## 🔜 What's missing for this to become a formal GUI deliverable
 
-- Update **RS-01** in the SRS (or its next version) to include a graphical interface.
-- Define receptionist authentication (update or close **R-02**).
+- Update **RS-01** in the SRS to include a graphical interface.
+- Implement real authentication (close risk **R-02**).
 - Choose the GUI technology: Java Swing/JavaFX if the SRS language is kept, or justify a change of stack if web technologies are used.
-- Fix the differences listed above.
+- Connect the interface to the application and the database instead of `localStorage`.

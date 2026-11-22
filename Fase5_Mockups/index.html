@@ -338,9 +338,15 @@ const parseDate = str => {                                                      
   return `${m[3]}-${m[2]}-${m[1]}`;
 };
 const round2 = n => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-const fmtCOP = n => 'COP $' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); // COP $#,###.##
+// Formato colombiano, igual que la aplicaci\u00f3n Java: "$ 120.000 COP" o "$ 25.000,50 COP"
+const fmtCOP = n => {
+  const v = round2(n || 0), d = Number.isInteger(v) ? 0 : 2;
+  return '$ ' + v.toLocaleString('es-CO', { minimumFractionDigits: d, maximumFractionDigits: d }) + ' COP';
+};
 const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 const code = (p, id) => `${p}-${String(id).padStart(4, '0')}`;
+// C\u00f3digo de reserva RES-AAAA-NNN (reservations.reservation_code): a\u00f1o de entrada + consecutivo
+const resCode = r => `RES-${String(r.entrada).slice(0, 4)}-${String(r.id).padStart(3, '0')}`;
 const optionsHTML = (items, sel) => items.map(([v, l]) => `<option value="${esc(v)}"${String(v) === String(sel) ? ' selected' : ''}>${esc(l)}</option>`).join('');
 const dateInput = (name, iso) => `<input name="${name}" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" data-mask="date" autocomplete="off" value="${iso ? fmtDate(iso) : ''}">`;
 
@@ -378,12 +384,16 @@ function ico(name, size = 16) {
 /* =====================================================================
    2. CONSTANTES, USUARIOS MOCK Y PERMISOS (RBAC — resuelve R-02)
    ===================================================================== */
-const STORAGE_KEY = 'gc_state_v1';
+const STORAGE_KEY = 'gc_state_v2';   // v2: modelo alineado con la BD y Java (descarta datos guardados de la v1)
 const SESSION_KEY = 'gc_session_v1';
-const TIPOS = ['Sencilla', 'Doble', 'Suite', 'Familiar'];
-const ESTADOS = ['Disponible', 'Ocupada', 'Mantenimiento'];
+// Tipos y estados del modelo (rooms.type / rooms.status). Etiquetas en español para la interfaz.
+const TIPOS = ['Sencilla', 'Doble', 'Suite'];                              // SINGLE / DOUBLE / SUITE
+const ESTADOS = ['Disponible', 'Ocupada', 'Mantenimiento'];                // AVAILABLE / OCCUPIED / MAINTENANCE
 const ROOM_LABEL = { Disponible: 'Disponible', Ocupada: 'Ocupada', Mantenimiento: 'Mantenimiento/Limpieza' };
 const ROOM_CLASS = { Disponible: 'ok', Ocupada: 'bad', Mantenimiento: 'warn' };
+// Estados internos de la reserva -> etiqueta del modelo (reservations.status)
+// Activa = PENDING (sin check-in) · En curso = ACTIVE · Finalizada = COMPLETED · Cancelada = CANCELLED
+const RES_LABEL = { Activa: 'Pendiente', 'En curso': 'Activa', Finalizada: 'Completada', Cancelada: 'Cancelada' };
 const RES_CLASS = { Activa: 'info', 'En curso': 'ok', Finalizada: 'muted', Cancelada: 'bad' };
 const INV_CLASS = { Pendiente: 'warn', Pagada: 'ok', 'Sin emitir': 'muted' };
 const ROLE_LABEL = { admin: 'Administrador', recepcion: 'Recepcionista' };
@@ -405,9 +415,9 @@ const CAPABILITIES = [
   ['Crear habitaciones', 'rooms.create'], ['Eliminar habitaciones', 'rooms.delete'],
   ['Modificar tarifa por noche', 'rooms.tarifa'], ['Cambiar estado manual de habitación', 'rooms.estado'],
   ['Registrar y editar huéspedes', 'guests.create'], ['Eliminar huéspedes', 'guests.delete'],
-  ['Crear y cancelar reservas', 'reservations.create'], ['Editar y eliminar reservas', 'reservations.edit'],
+  ['Crear y cancelar reservas', 'reservations.create'], ['Editar reservas', 'reservations.edit'],
   ['Check-in y check-out', 'stays.checkin'], ['Emitir facturas y registrar pagos', 'invoices.issue'],
-  ['Anular facturas', 'invoices.delete'], ['Restablecer datos demo', 'system.reset']
+  ['Restablecer datos demo', 'system.reset']
 ];
 
 let session = loadSession();
@@ -421,26 +431,29 @@ function saveSession() { try { session ? sessionStorage.setItem(SESSION_KEY, JSO
 /* =====================================================================
    3. ESTADO EN MEMORIA + PERSISTENCIA (localStorage)
    ===================================================================== */
+// Mismas habitaciones y huéspedes que script_hotel_db.sql y System_hotel.loadSeedData (Java).
 function seed() {
   const t = todayISO();
   return {
-    seq: { room: 4, guest: 3, res: 3, stay: 2, inv: 1 },
+    seq: { room: 5, guest: 4, res: 3, stay: 2, inv: 1 },
     rooms: [
-      { id: 1, numero: '101', tipo: 'Sencilla', tarifa: 120000, estado: 'Disponible' },
-      { id: 2, numero: '102', tipo: 'Doble', tarifa: 180000, estado: 'Ocupada' },
-      { id: 3, numero: '103', tipo: 'Suite', tarifa: 320000, estado: 'Mantenimiento' }
+      { id: 1, numero: '101', tipo: 'Sencilla', capacidad: 1, tarifa: 120000, cargoExtra: 0, estado: 'Disponible' },
+      { id: 2, numero: '102', tipo: 'Doble', capacidad: 2, tarifa: 200000, cargoExtra: 0, estado: 'Disponible' },
+      { id: 3, numero: '201', tipo: 'Suite', capacidad: 4, tarifa: 350000, cargoExtra: 50000, estado: 'Ocupada' },
+      { id: 4, numero: '202', tipo: 'Sencilla', capacidad: 1, tarifa: 120000, cargoExtra: 0, estado: 'Mantenimiento' }
     ],
     guests: [
-      { id: 1, nombre: 'Camila', apellido: 'Rojas Pardo', documento: '1075234567', telefono: '3105551234', email: 'camila.rojas@example.com' },
-      { id: 2, nombre: 'Andrés', apellido: 'Vargas Ortiz', documento: '1018456789', telefono: '3157778899', email: 'andres.vargas@example.com' }
+      { id: 1, nombre: 'Carlos', apellido: 'Pérez', documento: '1075234567', telefono: '3101234567', email: 'carlos.perez@example.com' },
+      { id: 2, nombre: 'Ana María', apellido: 'Gómez', documento: '1075987654', telefono: '3209876543', email: 'ana.gomez@example.com' },
+      { id: 3, nombre: 'Luis Fernando', apellido: 'Torres', documento: '1076543210', telefono: '3154567890', email: 'luis.torres@example.com' }
     ],
     reservations: [
-      { id: 1, habitacionId: 1, huespedId: 1, entrada: t, salida: addDays(t, 2), estado: 'Activa' },
-      { id: 2, habitacionId: 2, huespedId: 2, entrada: addDays(t, -2), salida: addDays(t, 1), estado: 'En curso' }
+      { id: 1, habitacionId: 1, huespedId: 1, entrada: t, salida: addDays(t, 3), estado: 'Activa' },
+      { id: 2, habitacionId: 3, huespedId: 3, entrada: addDays(t, -2), salida: addDays(t, 3), estado: 'En curso' }
     ],
     stays: [
-      { id: 1, reservaId: 2, habitacionId: 2, huespedId: 2, checkIn: addDays(t, -2), checkOut: null, tarifa: 180000, estado: 'Activa',
-        servicios: [{ descripcion: 'Minibar', monto: 25000 }, { descripcion: 'Lavandería', monto: 18000 }] }
+      { id: 1, reservaId: 2, habitacionId: 3, huespedId: 3, checkIn: addDays(t, -2), checkOut: null, tarifa: 350000, cargoExtra: 50000, estado: 'Activa',
+        servicios: [{ descripcion: 'Lavandería', monto: 30000 }] }
     ],
     invoices: []
   };
@@ -524,18 +537,16 @@ function conflicts(roomId, start, end, ignoreId) {
   return state.reservations.filter(r => r.habitacionId === roomId && r.id !== ignoreId &&
     (r.estado === 'Activa' || r.estado === 'En curso') && start < r.salida && end > r.entrada);
 }
-// RN-09: Total = (días × tarifa por noche) + servicios adicionales
+// RN-11: Total = (noches reservadas × tarifa por noche) + cargo extra de la Suite + servicios adicionales.
+// Igual que Invoice en Java: las noches son las de la reserva (entrada → salida).
 function calc(s) {
-  const dias = s.estado === 'Activa' ? Math.max(1, diffDays(s.checkIn, todayISO())) : Math.max(1, diffDays(s.checkIn, s.checkOut));
+  const rv = res(s.reservaId);
+  const dias = rv ? Math.max(1, diffDays(rv.entrada, rv.salida)) : 1;
   const subtotal = round2(dias * s.tarifa);
+  const cargoExtra = round2(s.cargoExtra || 0);
   const servicios = s.servicios.map(x => ({ descripcion: x.descripcion, monto: x.monto }));
   const serviciosTotal = round2(servicios.reduce((a, x) => a + x.monto, 0));
-  return { dias, tarifa: s.tarifa, subtotal, servicios, serviciosTotal, total: round2(subtotal + serviciosTotal) };
-}
-function refreshInvoice(inv) {
-  if (!inv || inv.estado !== 'Pendiente') return;
-  const s = stay(inv.estadiaId);
-  if (s && s.estado === 'Activa') Object.assign(inv, calc(s));
+  return { dias, tarifa: s.tarifa, subtotal, cargoExtra, servicios, serviciosTotal, total: round2(subtotal + cargoExtra + serviciosTotal) };
 }
 
 /* ----- Habitaciones ----- */
@@ -546,8 +557,10 @@ function roomForm(id) {
   const estadoEnabled = !!r && can('rooms.estado') && !hasStay;
   const body = `
     <div class="form-grid">
-      <label>Número de habitación *<input name="numero" maxlength="10" required value="${esc(r ? r.numero : '')}"></label>
+      <label>Número de habitación *<input name="numero" inputmode="numeric" maxlength="5" required value="${esc(r ? r.numero : '')}"></label>
       <label>Tipo *<select name="tipo">${optionsHTML(TIPOS.map(t => [t, t]), r ? r.tipo : 'Sencilla')}</select></label>
+      <label>Capacidad (huéspedes) *<input name="capacidad" type="number" min="1" max="255" step="1" required value="${r ? r.capacidad : ''}"></label>
+      <label>Cargo extra por estadía (solo Suite)<input name="cargoExtra" type="number" min="0" step="0.01" value="${r ? r.cargoExtra || 0 : 0}"></label>
       <label>Tarifa por noche (COP) *
         <input name="tarifa" type="number" min="1" step="0.01" required value="${r ? r.tarifa : ''}" ${canTarifa ? '' : 'readonly'}>
         ${canTarifa ? '' : `<small class="hint">${ico('lock', 12)} Solo el Administrador puede modificar la tarifa.</small>`}
@@ -561,17 +574,23 @@ function roomForm(id) {
     title: r ? `Editar habitación ${r.numero}` : 'Nueva habitación', body,
     onSave: f => {
       const numero = f.numero.value.trim(), tipo = f.tipo.value, tarifa = Number(f.tarifa.value);
-      if (!numero) return fail('El número de habitación es obligatorio');
+      const capacidad = Number(f.capacidad.value), cargoExtra = tipo === 'Suite' ? round2(f.cargoExtra.value || 0) : 0;
+      if (!/^\d{1,5}$/.test(numero) || +numero < 1 || +numero > 65535) return fail('El número de habitación debe estar entre 1 y 65535');
+      if (!Number.isInteger(capacidad) || capacidad < 1 || capacidad > 255) return fail('La capacidad debe estar entre 1 y 255 huéspedes');
       if (!(tarifa > 0)) return fail('La tarifa por noche debe ser un valor mayor a cero');
-      if (state.rooms.some(x => x.id !== id && norm(x.numero) === norm(numero))) return fail(`Ya existe una habitación con el número ${numero}`);
+      if (cargoExtra < 0) return fail('El cargo extra no puede ser negativo');
+      if (state.rooms.some(x => x.id !== id && +x.numero === +numero)) return fail('El número de habitación ya se encuentra registrado');
       if (r) {
         if (tarifa !== r.tarifa && !guard('rooms.tarifa')) return false;
         const estado = f.estado.value;
         if (estado !== r.estado && !guard('rooms.estado')) return false;
-        Object.assign(r, { numero, tipo, tarifa, estado });
+        // RN-14: el tipo solo cambia si la habitación no tiene reservas pendientes o activas
+        const vivas = state.reservations.some(x => x.habitacionId === id && (x.estado === 'Activa' || x.estado === 'En curso'));
+        if (tipo !== r.tipo && vivas) return fail('No se puede cambiar el tipo: la habitación tiene reservas pendientes o activas');
+        Object.assign(r, { numero, tipo, capacidad, tarifa, cargoExtra, estado });
         toast(`Habitación ${numero} actualizada`, 'success');
       } else {
-        state.rooms.push({ id: nextId('room'), numero, tipo, tarifa, estado: 'Disponible' });
+        state.rooms.push({ id: nextId('room'), numero, tipo, capacidad, tarifa, cargoExtra, estado: 'Disponible' });
         toast(`Habitación ${numero} creada con estado Disponible`, 'success');
       }
       commit();
@@ -599,19 +618,22 @@ function guestForm(id) {
     <div class="form-grid">
       <label>Nombres *<input name="nombre" maxlength="60" value="${esc(g ? g.nombre : '')}"></label>
       <label>Apellidos *<input name="apellido" maxlength="60" value="${esc(g ? g.apellido : '')}"></label>
-      <label>Documento de identidad *<input name="documento" maxlength="20" value="${esc(g ? g.documento : '')}"></label>
-      <label>Teléfono<input name="telefono" maxlength="20" value="${esc(g ? g.telefono : '')}"></label>
-      <label class="span2">Correo electrónico<input name="email" type="email" maxlength="80" value="${esc(g ? g.email : '')}"></label>
+      <label>Documento de identidad *<input name="documento" inputmode="numeric" maxlength="10" value="${esc(g ? g.documento : '')}" ${g ? 'readonly' : ''}></label>
+      <label>Teléfono *<input name="telefono" inputmode="numeric" maxlength="10" value="${esc(g ? g.telefono : '')}"></label>
+      <label class="span2">Correo electrónico *<input name="email" type="email" maxlength="80" value="${esc(g ? g.email : '')}"></label>
     </div>`;
   openModal({
     title: g ? 'Editar huésped' : 'Registrar huésped', body,
     onSave: f => {
       const d = { nombre: f.nombre.value.trim(), apellido: f.apellido.value.trim(), documento: f.documento.value.trim(), telefono: f.telefono.value.trim(), email: f.email.value.trim() };
+      // Mismas reglas que Person (Java) y la tabla guests: documento 6-10 dígitos, celular 10 dígitos,
+      // nombre completo (nombres + apellidos) hasta 60 caracteres, correo obligatorio hasta 80.
       if (!d.nombre || !d.apellido) return fail('Nombres y apellidos son obligatorios');
-      if (!/^[A-Za-z0-9-]{5,20}$/.test(d.documento)) return fail('El documento debe tener entre 5 y 20 caracteres alfanuméricos');
-      if (state.guests.some(x => x.id !== id && norm(x.documento) === norm(d.documento))) return fail(`Ya existe un huésped con el documento ${d.documento}`);
-      if (d.telefono && !/^[0-9+\s()-]{7,20}$/.test(d.telefono)) return fail('El teléfono no tiene un formato válido');
-      if (d.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) return fail('El correo electrónico no es válido');
+      if (`${d.nombre} ${d.apellido}`.length > 60) return fail('El nombre completo admite máximo 60 caracteres');
+      if (!/^\d{6,10}$/.test(d.documento)) return fail('El documento debe tener entre 6 y 10 dígitos');
+      if (state.guests.some(x => x.id !== id && x.documento === d.documento)) return fail('El huésped ya existe en el sistema');
+      if (!/^\d{10}$/.test(d.telefono)) return fail('El teléfono debe tener 10 dígitos');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) return fail('El correo electrónico no es válido');
       if (g) { Object.assign(g, d); toast('Huésped actualizado', 'success'); }
       else { state.guests.push({ id: nextId('guest'), ...d }); toast(`Huésped ${d.nombre} ${d.apellido} registrado`, 'success'); }
       commit();
@@ -644,7 +666,7 @@ function reservationForm(opts = {}) {
     </div>
     <div class="preview" id="resPreview"></div>`;
   openModal({
-    title: r ? `Editar reserva ${code('R', r.id)}` : 'Nueva reserva', body,
+    title: r ? `Editar reserva ${resCode(r)}` : 'Nueva reserva', body,
     onOpen: f => {
       const upd = () => setTimeout(() => {
         const e = parseDate(f.entrada.value), s = parseDate(f.salida.value), rm = room(Number(f.habitacion.value)), box = $('#resPreview');
@@ -662,14 +684,15 @@ function reservationForm(opts = {}) {
       if (!e || !s) return fail('Fecha inválida. Use el formato dd/mm/aaaa con fechas reales');
       if (s <= e) return fail('La fecha de salida debe ser estrictamente posterior a la fecha de entrada');
       if (e < todayISO()) return fail('La fecha de entrada no puede ser anterior a hoy');
+      if (room(rid).estado === 'Mantenimiento') return fail(`La habitación ${roomNum(rid)} está en mantenimiento`);   // RN-13
       if (conflicts(rid, e, s, r && r.id).length) return fail('La habitación no está disponible en el rango de fechas seleccionado');
       if (r) {
         Object.assign(r, { huespedId: gid, habitacionId: rid, entrada: e, salida: s });
-        toast(`Reserva ${code('R', r.id)} actualizada`, 'success');
+        toast(`Reserva ${resCode(r)} actualizada`, 'success');
       } else {
-        const id = nextId('res');
-        state.reservations.push({ id, habitacionId: rid, huespedId: gid, entrada: e, salida: s, estado: 'Activa' });
-        toast(`Reserva ${code('R', id)} creada: Hab. ${roomNum(rid)} del ${fmtDate(e)} al ${fmtDate(s)}`, 'success');
+        const nueva = { id: nextId('res'), habitacionId: rid, huespedId: gid, entrada: e, salida: s, estado: 'Activa' };
+        state.reservations.push(nueva);
+        toast(`Reserva ${resCode(nueva)} creada: Hab. ${roomNum(rid)} del ${fmtDate(e)} al ${fmtDate(s)}`, 'success');
       }
       commit();
     }
@@ -677,34 +700,29 @@ function reservationForm(opts = {}) {
 }
 function reservationCancel(id) {
   const r = res(id); if (!r) return;
-  if (r.estado !== 'Activa') return toast('Solo se pueden cancelar reservas activas (sin check-in)', 'error');
-  confirmModal({ title: 'Cancelar reserva', message: `¿Cancelar la reserva <b>${code('R', id)}</b> de ${esc(guestName(r.huespedId))}? Las fechas se liberarán de inmediato.`, confirmLabel: 'Cancelar reserva', danger: true,
-    onConfirm: () => { r.estado = 'Cancelada'; commit(); toast(`Reserva ${code('R', id)} cancelada. Fechas liberadas.`, 'success'); } });
+  if (r.estado !== 'Activa') return toast('Solo se pueden cancelar reservas pendientes (sin check-in)', 'error');
+  confirmModal({ title: 'Cancelar reserva', message: `¿Cancelar la reserva <b>${resCode(r)}</b> de ${esc(guestName(r.huespedId))}? Las fechas se liberarán de inmediato.`, confirmLabel: 'Cancelar reserva', danger: true,
+    onConfirm: () => { r.estado = 'Cancelada'; commit(); toast(`Reserva ${resCode(r)} cancelada. Fechas liberadas.`, 'success'); } });
 }
-function reservationDelete(id) {
-  const r = res(id); if (!r) return;
-  if (r.estado === 'En curso' || r.estado === 'Finalizada') return toast('No se puede eliminar una reserva con estadía registrada', 'error');
-  confirmModal({ title: 'Eliminar reserva', message: `¿Eliminar definitivamente la reserva <b>${code('R', id)}</b>?`, confirmLabel: 'Eliminar', danger: true,
-    onConfirm: () => { state.reservations = state.reservations.filter(x => x.id !== id); commit(); toast('Reserva eliminada', 'success'); } });
-}
+// Las reservas no se eliminan: se cancelan y quedan en el historial (FK RESTRICT en la BD).
 
 /* ----- Estadías ----- */
 function checkIn(resId) {
   const r = res(resId), t = todayISO();
-  if (!r || r.estado !== 'Activa') return toast('El check-in solo es posible con una reserva válida (activa)', 'error');
+  if (!r || r.estado !== 'Activa') return toast('El check-in solo es posible con una reserva válida (pendiente)', 'error');
   if (t < r.entrada) return toast(`Reserva aún no vigente: la entrada es el ${fmtDate(r.entrada)}`, 'error');
   if (t >= r.salida) return toast(`La reserva venció el ${fmtDate(r.salida)}. Cree una nueva reserva`, 'error');
   const h = room(r.habitacionId);
   if (!h) return toast('La habitación de la reserva ya no existe', 'error');
   if (h.estado !== 'Disponible') return toast(`La habitación ${h.numero} no está disponible para check-in (estado: ${ROOM_LABEL[h.estado]})`, 'error');
-  state.stays.push({ id: nextId('stay'), reservaId: r.id, habitacionId: h.id, huespedId: r.huespedId, checkIn: t, checkOut: null, tarifa: h.tarifa, servicios: [], estado: 'Activa' });
+  state.stays.push({ id: nextId('stay'), reservaId: r.id, habitacionId: h.id, huespedId: r.huespedId, checkIn: t, checkOut: null, tarifa: h.tarifa, cargoExtra: h.cargoExtra || 0, servicios: [], estado: 'Activa' });
   r.estado = 'En curso'; h.estado = 'Ocupada';
   commit(); toast(`Check-in realizado: ${guestName(r.huespedId)} en la habitación ${h.numero}`, 'success');
 }
 function serviceForm(stayId) {
   const s = stay(stayId); if (!s || s.estado !== 'Activa') return;
-  const inv = invoiceOfStay(stayId);
-  if (inv && inv.estado === 'Pagada') return toast('La cuenta ya fue saldada. Realice el check-out', 'warn');
+  // RN-12: la factura es inmutable; después de emitirla no se agregan servicios.
+  if (invoiceOfStay(stayId)) return toast('La estadía ya fue facturada; no se pueden agregar más servicios', 'warn');
   openModal({
     title: `Agregar servicio · Hab. ${roomNum(s.habitacionId)}`,
     body: `<div class="form-grid"><label class="span2">Descripción *<input name="descripcion" maxlength="60" placeholder="Ej. Desayuno, Lavandería, Minibar"></label>
@@ -714,7 +732,6 @@ function serviceForm(stayId) {
       if (!descripcion) return fail('La descripción del servicio es obligatoria');
       if (!(monto > 0)) return fail('El valor del servicio debe ser mayor a cero');
       s.servicios.push({ descripcion, monto });
-      refreshInvoice(invoiceOfStay(stayId));
       commit(); toast(`Servicio agregado: ${descripcion} (${fmtCOP(monto)})`, 'success');
     }
   });
@@ -734,18 +751,18 @@ function invoiceHTML(d) {
       <thead><tr><th>Concepto</th><th class="num">Cant.</th><th class="num">Valor unit.</th><th class="num">Subtotal</th></tr></thead>
       <tbody>
         <tr><td>Alojamiento</td><td class="num">${d.dias} noche(s)</td><td class="num">${fmtCOP(d.tarifa)}</td><td class="num">${fmtCOP(d.subtotal)}</td></tr>
+        ${d.cargoExtra ? `<tr><td>Cargo extra de la Suite</td><td class="num">1</td><td class="num">${fmtCOP(d.cargoExtra)}</td><td class="num">${fmtCOP(d.cargoExtra)}</td></tr>` : ''}
         ${filas || '<tr><td colspan="4" class="muted">Sin servicios adicionales</td></tr>'}
       </tbody>
       <tfoot><tr><td colspan="3">Total</td><td class="num">${fmtCOP(d.total)}</td></tr></tfoot>
     </table>
-    <p class="small" style="margin-top:10px">Total = (${d.dias} día(s) × ${fmtCOP(d.tarifa)}) + servicios adicionales ${fmtCOP(d.serviciosTotal)}</p>
+    <p class="small" style="margin-top:10px">Total = (${d.dias} noche(s) × ${fmtCOP(d.tarifa)})${d.cargoExtra ? ` + cargo extra ${fmtCOP(d.cargoExtra)}` : ''} + servicios adicionales ${fmtCOP(d.serviciosTotal)}</p>
     ${d.estado === 'Pagada' ? `<p class="small">Pagada el ${fmtDate(d.fechaPago)} · Método: ${esc(d.pagoMetodo)}</p>` : ''}
   </div>`;
 }
 function invoiceModal(stayId) {
   const s = stay(stayId); if (!s) return;
-  const inv = invoiceOfStay(stayId);
-  if (inv) { refreshInvoice(inv); saveState(); }
+  const inv = invoiceOfStay(stayId);   // una factura emitida no se recalcula (RN-12)
   const g = guest(s.huespedId), r = room(s.habitacionId);
   const data = inv || Object.assign({ estado: 'Sin emitir', numero: null, fecha: todayISO(), huespedNombre: guestName(s.huespedId),
     documento: g ? g.documento : '—', habitacionNumero: r ? r.numero : '—', habitacionTipo: r ? r.tipo : '—', checkIn: s.checkIn }, calc(s));
@@ -764,26 +781,19 @@ function invoiceModal(stayId) {
           fecha: todayISO(), estado: 'Pendiente', ...d });
         commit(); toast(`Factura ${code('F', id)} emitida por ${fmtCOP(d.total)}. Registre el pago para habilitar el check-out`, 'success');
       } else {
-        refreshInvoice(inv);
         inv.estado = 'Pagada'; inv.pagoMetodo = f.metodo.value; inv.fechaPago = todayISO();
         commit(); toast(`Pago de ${fmtCOP(inv.total)} registrado. La cuenta quedó en cero`, 'success');
       }
     }
   });
 }
-function invoiceDelete(id) {
-  const inv = state.invoices.find(i => i.id === id); if (!inv) return;
-  if (inv.estado === 'Pagada') return toast('No se puede anular una factura ya pagada', 'error');
-  confirmModal({ title: 'Anular factura', message: `¿Anular la factura <b>${esc(inv.numero)}</b>?`, confirmLabel: 'Anular', danger: true,
-    onConfirm: () => { state.invoices = state.invoices.filter(i => i.id !== id); commit(); toast(`Factura ${inv.numero} anulada`, 'success'); } });
-}
+// RN-12: las facturas no se anulan ni se eliminan.
 function checkOut(stayId) {
   const s = stay(stayId);
   if (!s || s.estado !== 'Activa') return toast('La estadía no está activa', 'error');
   const inv = invoiceOfStay(stayId);
   if (!inv) return toast('No se puede hacer check-out: la cuenta no ha sido facturada ni saldada', 'error');
-  refreshInvoice(inv);
-  if (inv.estado !== 'Pagada') { saveState(); return toast(`No se puede hacer check-out: saldo pendiente de ${fmtCOP(inv.total)}`, 'error'); }
+  if (inv.estado !== 'Pagada') { return toast(`No se puede hacer check-out: saldo pendiente de ${fmtCOP(inv.total)}`, 'error'); }
   confirmModal({ title: 'Confirmar check-out', message: `¿Finalizar la estadía de <b>${esc(guestName(s.huespedId))}</b> en la habitación <b>${esc(roomNum(s.habitacionId))}</b>? La habitación pasará a Mantenimiento/Limpieza.`, confirmLabel: 'Hacer check-out',
     onConfirm: () => {
       s.estado = 'Finalizada'; s.checkOut = todayISO();
@@ -811,14 +821,12 @@ const ACTIONS = {
   'res.new':       { perm: 'reservations.create', fn: () => reservationForm() },
   'res.edit':      { perm: 'reservations.edit',   fn: id => reservationForm({ id }) },
   'res.cancel':    { perm: 'reservations.cancel', fn: id => reservationCancel(id) },
-  'res.delete':    { perm: 'reservations.delete', fn: id => reservationDelete(id) },
   'avail.reserve': { perm: 'reservations.create', fn: id => { const g = ui.avail && ui.avail.range; reservationForm({ habitacionId: id, entrada: g ? g.e : null, salida: g ? g.s : null }); } },
   'stay.checkin':  { perm: 'stays.checkin',       fn: id => checkIn(id) },
   'stay.checkout': { perm: 'stays.checkout',      fn: id => checkOut(id) },
   'stay.service':  { perm: 'stays.services',      fn: id => serviceForm(id) },
   'stay.invoice':  { perm: 'invoices.view',       fn: id => invoiceModal(id) },
   'inv.open':      { perm: 'invoices.view',       fn: id => { const i = state.invoices.find(x => x.id === id); if (i) invoiceModal(i.estadiaId); } },
-  'inv.delete':    { perm: 'invoices.delete',     fn: id => invoiceDelete(id) },
   'demo.reset':    { perm: 'system.reset',        fn: () => resetDemo() }
 };
 function runAction(act, id, el) {
@@ -854,7 +862,7 @@ function viewDashboard() {
     stat('checkc', 'ok', 'Disponibles', c('Disponible'), 'listas para huéspedes'),
     stat('door', 'bad', 'Ocupadas', c('Ocupada'), `${occ}% de ocupación`),
     stat('sparkle', 'warn', 'Mantenimiento/Limpieza', c('Mantenimiento'), 'fuera de servicio'),
-    stat('calendar', 'info', 'Reservas activas', state.reservations.filter(r => r.estado === 'Activa').length, 'pendientes de check-in'),
+    stat('calendar', 'info', 'Reservas pendientes', state.reservations.filter(r => r.estado === 'Activa').length, 'esperando check-in'),
     stat('users', '', 'Huéspedes', state.guests.length, 'registrados'),
     stat('wallet', 'ok', 'Ingresos cobrados', fmtCOP(cobrado), 'facturas pagadas', true),
     stat('clock', 'warn', 'Por cobrar', fmtCOP(porCobrar), 'facturas pendientes', true)
@@ -866,7 +874,7 @@ function viewDashboard() {
     if (s) { const rv = res(s.reservaId); det = `<p>${esc(guestName(s.huespedId))}</p><p class="muted">Salida prevista: ${fmtDate(rv ? rv.salida : null)}</p>`; }
     else if (next) det = `<p>${esc(guestName(next.huespedId))}</p><p class="muted">${fmtDate(next.entrada)} → ${fmtDate(next.salida)}</p>`;
     return `<article class="tile ${ROOM_CLASS[r.estado]}">
-      <div class="tile-top"><div><h4>${esc(r.numero)}</h4><p class="muted">${esc(r.tipo)}</p></div>${badge(ROOM_LABEL[r.estado], ROOM_CLASS[r.estado])}</div>
+      <div class="tile-top"><div><h4>${esc(r.numero)}</h4><p class="muted">${esc(r.tipo)} · ${r.capacidad} huésped(es)</p></div>${badge(ROOM_LABEL[r.estado], ROOM_CLASS[r.estado])}</div>
       <p><b>${fmtCOP(r.tarifa)}</b> <span class="muted">/ noche</span></p>${det}
       ${r.estado === 'Mantenimiento' ? btn('room.clean', 'Marcar disponible', r.id, 'btn-success', 'refresh') : ''}
     </article>`;
@@ -884,12 +892,13 @@ function viewDashboard() {
 
 function viewRooms() {
   const rows = state.rooms.slice().sort((a, b) => a.numero.localeCompare(b.numero, 'es', { numeric: true })).map(r => `<tr>
-    <td><strong>${esc(r.numero)}</strong></td><td>${esc(r.tipo)}</td><td class="num">${fmtCOP(r.tarifa)}</td>
+    <td><strong>${esc(r.numero)}</strong></td><td>${esc(r.tipo)}</td><td class="num">${r.capacidad}</td><td class="num">${fmtCOP(r.tarifa)}</td>
+    <td class="num">${r.cargoExtra ? fmtCOP(r.cargoExtra) : '—'}</td>
     <td>${badge(ROOM_LABEL[r.estado], ROOM_CLASS[r.estado])}</td>
     <td><div class="row-actions">${btn('room.edit', 'Editar', r.id, 'btn-ghost', 'edit')}${r.estado === 'Mantenimiento' ? btn('room.clean', 'Marcar disponible', r.id, 'btn-success', 'refresh') : ''}${btn('room.delete', 'Eliminar', r.id, 'btn-danger-ghost', 'trash')}</div></td></tr>`).join('');
   return `<div class="view-head"><h3>Habitaciones</h3>${btn('room.new', 'Nueva habitación', null, 'btn-primary', 'plus')}</div>
-    <div class="table-wrap"><table class="table"><thead><tr><th>Número</th><th>Tipo</th><th class="num">Tarifa por noche</th><th>Estado</th><th>Acciones</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="5" class="empty">No hay habitaciones registradas</td></tr>'}</tbody></table></div>`;
+    <div class="table-wrap"><table class="table"><thead><tr><th>Número</th><th>Tipo</th><th class="num">Capacidad</th><th class="num">Tarifa por noche</th><th class="num">Cargo extra</th><th>Estado</th><th>Acciones</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="7" class="empty">No hay habitaciones registradas</td></tr>'}</tbody></table></div>`;
 }
 
 function guestRows() {
@@ -911,14 +920,13 @@ function viewReservations() {
   const list = state.reservations.filter(r => f === 'Todas' || r.estado === f).sort((a, b) => b.id - a.id);
   const rows = list.map(r => {
     let acts = '';
-    if (r.estado === 'Activa') acts = btn('stay.checkin', 'Check-in', r.id, 'btn-success', 'key') + btn('res.cancel', 'Cancelar', r.id, 'btn-danger-ghost', 'x') + btn('res.edit', 'Editar', r.id, 'btn-ghost', 'edit') + btn('res.delete', 'Eliminar', r.id, 'btn-ghost', 'trash');
-    else if (r.estado === 'Cancelada') acts = btn('res.delete', 'Eliminar', r.id, 'btn-ghost', 'trash');
-    return `<tr><td><strong>${code('R', r.id)}</strong></td><td>${esc(guestName(r.huespedId))}</td><td>Hab. ${esc(roomNum(r.habitacionId))}</td>
-      <td>${fmtDate(r.entrada)}</td><td>${fmtDate(r.salida)}</td><td class="num">${diffDays(r.entrada, r.salida)}</td><td>${badge(r.estado, RES_CLASS[r.estado])}</td>
+    if (r.estado === 'Activa') acts = btn('stay.checkin', 'Check-in', r.id, 'btn-success', 'key') + btn('res.cancel', 'Cancelar', r.id, 'btn-danger-ghost', 'x') + btn('res.edit', 'Editar', r.id, 'btn-ghost', 'edit');
+    return `<tr><td><strong>${resCode(r)}</strong></td><td>${esc(guestName(r.huespedId))}</td><td>Hab. ${esc(roomNum(r.habitacionId))}</td>
+      <td>${fmtDate(r.entrada)}</td><td>${fmtDate(r.salida)}</td><td class="num">${diffDays(r.entrada, r.salida)}</td><td>${badge(RES_LABEL[r.estado], RES_CLASS[r.estado])}</td>
       <td><div class="row-actions">${acts}</div></td></tr>`;
   }).join('');
   return `<div class="view-head"><h3>Reservas</h3><div class="toolbar">
-    <select id="resFilter" aria-label="Filtrar por estado">${optionsHTML(['Todas', 'Activa', 'En curso', 'Finalizada', 'Cancelada'].map(x => [x, x === 'Todas' ? 'Todos los estados' : x]), f)}</select>
+    <select id="resFilter" aria-label="Filtrar por estado">${optionsHTML(['Todas', 'Activa', 'En curso', 'Finalizada', 'Cancelada'].map(x => [x, x === 'Todas' ? 'Todos los estados' : RES_LABEL[x]]), f)}</select>
     ${btn('res.new', 'Nueva reserva', null, 'btn-primary', 'plus')}</div></div>
     <div class="table-wrap"><table class="table"><thead><tr><th>Código</th><th>Huésped</th><th>Habitación</th><th>Entrada</th><th>Salida</th><th class="num">Noches</th><th>Estado</th><th>Acciones</th></tr></thead>
     <tbody>${rows || '<tr><td colspan="8" class="empty">No hay reservas para este filtro</td></tr>'}</tbody></table></div>`;
@@ -931,10 +939,13 @@ function viewAvailability() {
   if (a.range) {
     const n = diffDays(a.range.e, a.range.s);
     const rows = state.rooms.slice().sort((x, y) => x.numero.localeCompare(y.numero, 'es', { numeric: true })).map(r => {
-      const cf = conflicts(r.id, a.range.e, a.range.s), free = cf.length === 0;
+      // RN-07: sin cruce de fechas; RN-13: una habitación en mantenimiento no se puede reservar
+      const cf = conflicts(r.id, a.range.e, a.range.s), maint = r.estado === 'Mantenimiento', free = cf.length === 0 && !maint;
+      const motivo = maint ? '<div class="small">En mantenimiento/limpieza</div>'
+        : cf.length ? `<div class="small">Cruce: ${cf.map(c => `${resCode(c)} (${fmtDate(c.entrada)} – ${fmtDate(c.salida)})`).join(', ')}</div>` : '';
       return `<tr><td><strong>${esc(r.numero)}</strong></td><td>${esc(r.tipo)}</td><td class="num">${fmtCOP(r.tarifa)}</td>
-        <td>${free ? badge('Disponible', 'ok') : badge('No disponible', 'bad')}${free ? '' : `<div class="small">Cruce: ${cf.map(c => `${code('R', c.id)} (${fmtDate(c.entrada)} – ${fmtDate(c.salida)})`).join(', ')}</div>`}</td>
-        <td>${badge(ROOM_LABEL[r.estado], ROOM_CLASS[r.estado])}</td><td class="num">${free ? fmtCOP(n * r.tarifa) : '—'}</td>
+        <td>${free ? badge('Disponible', 'ok') : badge('No disponible', 'bad')}${motivo}</td>
+        <td>${badge(ROOM_LABEL[r.estado], ROOM_CLASS[r.estado])}</td><td class="num">${free ? fmtCOP(n * r.tarifa + (r.cargoExtra || 0)) : '—'}</td>
         <td>${free ? btn('avail.reserve', 'Reservar', r.id, 'btn-primary', 'calendar') : ''}</td></tr>`;
     }).join('');
     results = `<table class="table"><thead><tr><th>Habitación</th><th>Tipo</th><th class="num">Tarifa</th><th>Disponibilidad en el rango</th><th>Estado actual</th><th class="num">Alojamiento (${n} noche/s)</th><th></th></tr></thead>
@@ -955,7 +966,7 @@ function viewStays() {
   const ready = state.reservations.filter(r => r.estado === 'Activa' && r.entrada <= t && r.salida > t);
   const active = state.stays.filter(s => s.estado === 'Activa');
   const done = state.stays.filter(s => s.estado === 'Finalizada').slice().reverse();
-  const readyRows = ready.map(r => `<tr><td><strong>${code('R', r.id)}</strong></td><td>${esc(guestName(r.huespedId))}</td><td>Hab. ${esc(roomNum(r.habitacionId))} ${room(r.habitacionId) ? badge(ROOM_LABEL[room(r.habitacionId).estado], ROOM_CLASS[room(r.habitacionId).estado]) : ''}</td>
+  const readyRows = ready.map(r => `<tr><td><strong>${resCode(r)}</strong></td><td>${esc(guestName(r.huespedId))}</td><td>Hab. ${esc(roomNum(r.habitacionId))} ${room(r.habitacionId) ? badge(ROOM_LABEL[room(r.habitacionId).estado], ROOM_CLASS[room(r.habitacionId).estado]) : ''}</td>
     <td>${fmtDate(r.entrada)} → ${fmtDate(r.salida)}</td><td>${btn('stay.checkin', 'Check-in', r.id, 'btn-success', 'key')}</td></tr>`).join('');
   const activeRows = active.map(s => {
     const inv = invoiceOfStay(s.id), c = calc(s);
@@ -983,7 +994,7 @@ function viewInvoices() {
   const sum = est => round2(state.invoices.filter(i => !est || i.estado === est).reduce((a, i) => a + i.total, 0));
   const rows = state.invoices.slice().sort((a, b) => b.id - a.id).map(i => `<tr><td><strong>${esc(i.numero)}</strong></td><td>${fmtDate(i.fecha)}</td><td>${esc(i.huespedNombre)}</td>
     <td>Hab. ${esc(i.habitacionNumero)}</td><td class="num">${i.dias}</td><td class="num">${fmtCOP(i.serviciosTotal)}</td><td class="num"><b>${fmtCOP(i.total)}</b></td><td>${badge(i.estado, INV_CLASS[i.estado])}</td>
-    <td><div class="row-actions">${btn('inv.open', i.estado === 'Pendiente' ? 'Ver / Cobrar' : 'Ver', i.id, i.estado === 'Pendiente' ? 'btn-success' : 'btn-ghost', i.estado === 'Pendiente' ? 'card' : 'file')}${i.estado === 'Pendiente' ? btn('inv.delete', 'Anular', i.id, 'btn-danger-ghost', 'x') : ''}</div></td></tr>`).join('');
+    <td><div class="row-actions">${btn('inv.open', i.estado === 'Pendiente' ? 'Ver / Cobrar' : 'Ver', i.id, i.estado === 'Pendiente' ? 'btn-success' : 'btn-ghost', i.estado === 'Pendiente' ? 'card' : 'file')}</div></td></tr>`).join('');
   return `<div class="view-head"><h3>Facturación</h3></div>
     <div class="stats">
       ${stat('file', 'info', 'Total facturado', fmtCOP(sum()), '', true)}
