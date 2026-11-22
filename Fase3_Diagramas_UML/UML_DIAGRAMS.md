@@ -1,273 +1,306 @@
-# Software Architecture & UML Diagrams Specification
+# Diagramas UML — Sistema de Gestión Hotelera (`System_hotel`)
 
-## Project: Hotel Management System (`System_hotel`)
+Versión 2.1, alineada con las 14 historias de usuario (Fase 1), el SRS v2.0 (Fase 2), la base de datos `system_hotel_db` (Fase 4) y el código Java (Fase 6).
 
-This document provides the standard Object-Oriented Analysis and Design (OOAD) models for the Hotel Management System using UML 2.5 standards in PlantUML and Mermaid formats.
+Los diagramas están en **Mermaid**, que GitHub muestra directamente. Las imágenes de `Diagrams/` se generan a partir de este mismo código.
+
+| Diagrama | Imagen |
+| :--- | :--- |
+| 1. Casos de uso | `Diagrams/diagrama_casos_de_uso.png` |
+| 2. Clases | `Diagrams/diagrama_clases_hotel.png` |
+| 3. Secuencia (crear reserva) | `Diagrams/diagrama_secuencia.png` |
+| 4. Actividades (estadía: servicios, factura, pago y check-out) | `Diagrams/diagrama_actividades.png` |
 
 ---
 
-## 1. Use Case Diagram
+## 1. Diagrama de casos de uso
 
-Defines the system boundaries and interactions between actors (`Administrator` and `Receptionist`) and functional capabilities.
+Un único actor opera el sistema: el **Recepcionista** (SRS 2.3). El huésped es sujeto de los datos y no interactúa con el sistema. Cada caso de uso corresponde a una historia de usuario (HU) y a un requisito funcional (RF) con el mismo número.
 
 ```mermaid
-graph TD
-    subgraph SystemBoundary["Hotel Management System (System_hotel)"]
-        UC1["UC-01: Register Room"]
-        UC2["UC-02: Update Room"]
-        UC3["UC-03: Delete Room"]
-        UC4["UC-04: Query Rooms"]
+flowchart LR
+    Recep(["👤 Recepcionista"])
 
-        UC5["UC-05: Register Guest"]
-        UC6["UC-06: Query Guest"]
-
-        UC7["UC-07: Create Reservation"]
-        UC8["UC-08: Process Check-in"]
-        UC9["UC-09: Process Check-out"]
-        UC10["UC-10: Generate Invoice"]
-        UC11["UC-11: Cancel Reservation"]
+    subgraph SYS["Sistema de Gestión Hotelera"]
+        direction TB
+        subgraph E1["Épica 1 · Habitaciones"]
+            HU01(["HU-01 Registrar habitación"])
+            HU02(["HU-02 Modificar habitación"])
+            HU03(["HU-03 Eliminar habitación"])
+            HU04(["HU-04 Listar habitaciones"])
+        end
+        subgraph E2["Épica 2 · Huéspedes"]
+            HU05(["HU-05 Registrar huésped"])
+            HU06(["HU-06 Actualizar huésped"])
+            HU07(["HU-07 Eliminar huésped"])
+            HU08(["HU-08 Consultar huéspedes"])
+        end
+        subgraph E3["Épica 3 · Reservas"]
+            HU09(["HU-09 Crear reserva"])
+            HU10(["HU-10 Cancelar reserva"])
+            HU11(["HU-11 Consultar disponibilidad"])
+        end
+        subgraph E4["Épica 4 · Estadía"]
+            HU12(["HU-12 Check-in"])
+            SRV(["Registrar servicio adicional"])
+            HU13(["HU-13 Check-out"])
+        end
+        subgraph E5["Épica 5 · Facturación"]
+            HU14(["HU-14 Generar factura"])
+            PAY(["Registrar pago"])
+        end
     end
 
-    Admin["👤 Hotel Administrator"]
-    Recep["👤 Receptionist"]
+    Recep --- HU01 & HU02 & HU03 & HU04
+    Recep --- HU05 & HU06 & HU07 & HU08
+    Recep --- HU09 & HU10 & HU11
+    Recep --- HU12 & SRV & HU13
+    Recep --- HU14 & PAY
 
-    Admin --> UC1
-    Admin --> UC2
-    Admin --> UC3
-    Admin --> UC4
-
-    Recep --> UC4
-    Recep --> UC5
-    Recep --> UC6
-    Recep --> UC7
-    Recep --> UC8
-    Recep --> UC9
-    Recep --> UC11
-
-    UC9 -. "<<include>>" .-> UC10
-    UC7 -. "<<include>>" .-> UC4
+    HU09 -. "«include»" .-> HU11
+    HU13 -. "«include» verificar cuenta saldada" .-> PAY
+    PAY -. "«include»" .-> HU14
+    SRV -. "«extend»" .-> HU14
 ```
 
 ---
 
-## 2. Class Diagram (Domain & Application Model)
+## 2. Diagrama de clases
 
-Domain model v2.0, aligned with the SRS, the database schema (Phase 4) and the Java code (Phase 6). Money uses `BigDecimal` (DECIMAL in the database) and states use enums.
+Herencia e interfaces: `IRoom` ← `Room` (abstracta) ← `SingleRoom` / `DoubleRoom` / `SuiteRoom`; `IGuest` + `Person` (abstracta) ← `Guest`. `Hotel` concentra las reglas de negocio y depende de las interfaces (principio de inversión de dependencias). El dinero usa `BigDecimal` (`DECIMAL` en la BD) y los estados son enums.
 
-```plantuml
-@startuml
-skinparam classAttributeIconSize 0
+```mermaid
+classDiagram
+    direction TB
 
-enum RoomType {
-    SINGLE
-    DOUBLE
-    SUITE
-}
+    class RoomType {
+        <<enumeration>>
+        SINGLE
+        DOUBLE
+        SUITE
+    }
+    class RoomStatus {
+        <<enumeration>>
+        AVAILABLE
+        OCCUPIED
+        MAINTENANCE
+    }
+    class ReservationStatus {
+        <<enumeration>>
+        PENDING
+        ACTIVE
+        COMPLETED
+        CANCELLED
+        +blocksRoom() boolean
+    }
+    class PaymentMethod {
+        <<enumeration>>
+        CASH
+        CARD
+        TRANSFER
+    }
 
-enum RoomStatus {
-    AVAILABLE
-    OCCUPIED
-    MAINTENANCE
-}
+    class IRoom {
+        <<interface>>
+        +getNumber() int
+        +getType() RoomType
+        +getCapacity() int
+        +getPricePerNight() BigDecimal
+        +getExtraServiceFee() BigDecimal
+        +getStatus() RoomStatus
+        +changeStatus(RoomStatus) void
+        +setPricePerNight(BigDecimal) void
+        +isBookable() boolean
+        +calculatePrice(long nights) BigDecimal
+    }
+    class Room {
+        <<abstract>>
+        -number: int
+        -capacity: int
+        -pricePerNight: BigDecimal
+        -status: RoomStatus
+        +calculatePrice(long nights) BigDecimal
+    }
+    class SingleRoom
+    class DoubleRoom
+    class SuiteRoom {
+        -extraServiceFee: BigDecimal
+        +getExtraServiceFee() BigDecimal
+    }
+    class RoomFactory {
+        +create(RoomType, int number, int capacity, BigDecimal price, BigDecimal fee)$ Room
+    }
 
-enum ReservationStatus {
-    PENDING
-    ACTIVE
-    COMPLETED
-    CANCELLED
-    + blocksRoom(): boolean
-}
+    class IGuest {
+        <<interface>>
+        +getDocument() String
+        +getFullName() String
+        +getEmail() String
+        +getPhone() String
+    }
+    class Person {
+        <<abstract>>
+        -document: String
+        -fullName: String
+        -email: String
+        -phone: String
+    }
+    class Guest {
+        +updateContactInfo(String email, String phone) void
+        +updatePersonalInfo(String name, String email, String phone) void
+    }
 
-interface IRoom {
-    + getNumber(): int
-    + getType(): RoomType
-    + getCapacity(): int
-    + getPricePerNight(): BigDecimal
-    + getExtraServiceFee(): BigDecimal
-    + getStatus(): RoomStatus
-    + changeStatus(status: RoomStatus): void
-    + setPricePerNight(price: BigDecimal): void
-    + isBookable(): boolean
-    + calculatePrice(nights: long): BigDecimal
-}
+    class Reservation {
+        -reservationCode: String
+        -checkInDate: LocalDate
+        -checkOutDate: LocalDate
+        -status: ReservationStatus
+        +overlaps(LocalDate, LocalDate) boolean
+        +getStayDays() long
+        +checkIn(LocalDate today) void
+        +addService(AdditionalService) void
+        +getServicesTotal() BigDecimal
+        +checkOut() void
+        +cancel() void
+    }
+    class AdditionalService {
+        <<immutable>>
+        -description: String
+        -amount: BigDecimal
+        -registeredAt: LocalDateTime
+    }
+    class Invoice {
+        <<immutable>>
+        -invoiceId: int
+        -stayDays: long
+        -nightRate: BigDecimal
+        -extraServiceFee: BigDecimal
+        -additionalServices: BigDecimal
+        -totalAmount: BigDecimal
+        -issueDate: LocalDateTime
+    }
+    class Payment {
+        <<immutable>>
+        -amount: BigDecimal
+        -method: PaymentMethod
+        -paidAt: LocalDateTime
+    }
 
-abstract class Room {
-    - number: int
-    - capacity: int
-    - pricePerNight: BigDecimal
-    - status: RoomStatus
-    + calculatePrice(nights: long): BigDecimal
-}
+    class Hotel {
+        -rooms: List~IRoom~
+        -guests: List~Guest~
+        -reservations: List~Reservation~
+        -invoices: List~Invoice~
+        -payments: List~Payment~
+        +registerRoom(IRoom) void
+        +updateRoomRate(int, BigDecimal) void
+        +changeRoomType(int, RoomType, int, BigDecimal, BigDecimal) IRoom
+        +changeRoomStatus(int, RoomStatus) void
+        +deleteRoom(int) void
+        +registerGuest(Guest) void
+        +updateGuest(String doc, String name, String email, String phone) void
+        +deleteGuest(String doc) void
+        +searchGuests(String text) List~Guest~
+        +createReservation(String doc, int room, LocalDate in, LocalDate out) Reservation
+        +getAvailableRooms(LocalDate in, LocalDate out) List~IRoom~
+        +cancelReservation(String code) Reservation
+        +checkIn(String code) Reservation
+        +addService(String code, String description, BigDecimal amount) AdditionalService
+        +generateInvoice(String code) Invoice
+        +registerPayment(int invoiceId, PaymentMethod) Payment
+        +checkOut(String code) Reservation
+    }
 
-class SingleRoom
-class DoubleRoom
-class SuiteRoom {
-    - extraServiceFee: BigDecimal
-    + getExtraServiceFee(): BigDecimal
-}
+    class BusinessRuleException {
+        -ruleCode: String
+    }
+    class EntityNotFoundException
 
-class RoomFactory {
-    + {static} create(type: RoomType, number: int, capacity: int, price: BigDecimal, fee: BigDecimal): Room
-}
+    IRoom <|.. Room
+    Room <|-- SingleRoom
+    Room <|-- DoubleRoom
+    Room <|-- SuiteRoom
+    RoomFactory ..> Room : crea
+    IGuest <|.. Guest
+    Person <|-- Guest
 
-interface IGuest {
-    + getDocument(): String
-    + getFullName(): String
-}
-
-abstract class Person {
-    - document: String
-    - fullName: String
-    - email: String
-    - phone: String
-}
-
-class Guest {
-    + updateContactInfo(email: String, phone: String): void
-}
-
-class Reservation {
-    - reservationCode: String
-    - checkInDate: LocalDate
-    - checkOutDate: LocalDate
-    - status: ReservationStatus
-    + overlaps(start: LocalDate, end: LocalDate): boolean
-    + getStayDays(): long
-    + checkIn(): void
-    + checkOut(): void
-    + cancel(): void
-}
-
-class Invoice <<immutable>> {
-    - invoiceId: int
-    - stayDays: long
-    - nightRate: BigDecimal
-    - extraServiceFee: BigDecimal
-    - additionalServices: BigDecimal
-    - totalAmount: BigDecimal
-    - issueDate: LocalDateTime
-}
-
-class Hotel {
-    - rooms: List<IRoom>
-    - guests: List<Guest>
-    - reservations: List<Reservation>
-    - invoices: List<Invoice>
-    + registerRoom(room: IRoom): void
-    + updateRoomRate(number: int, price: BigDecimal): void
-    + changeRoomType(number: int, type: RoomType, ...): IRoom
-    + changeRoomStatus(number: int, status: RoomStatus): void
-    + deleteRoom(number: int): void
-    + registerGuest(guest: Guest): void
-    + updateGuestContact(document: String, email: String, phone: String): void
-    + createReservation(document: String, roomNumber: int, checkIn: LocalDate, checkOut: LocalDate): Reservation
-    + checkIn(code: String): Reservation
-    + checkOut(code: String, additionalServices: BigDecimal): Invoice
-    + cancelReservation(code: String): Reservation
-}
-
-class BusinessRuleException {
-    - ruleCode: String
-}
-class EntityNotFoundException
-
-IRoom <|.. Room
-Room <|-- SingleRoom
-Room <|-- DoubleRoom
-Room <|-- SuiteRoom
-RoomFactory ..> Room : creates
-IGuest <|.. Guest
-Person <|-- Guest
-
-Hotel "1" o-- "0..*" IRoom : manages
-Hotel "1" o-- "0..*" Guest : manages
-Hotel "1" *-- "0..*" Reservation : manages
-Hotel "1" *-- "0..*" Invoice : issues
-Reservation "0..*" --> "1" IGuest : associated to
-Reservation "0..*" --> "1" IRoom : assigned to
-Invoice "0..1" --> "1" Reservation : generated from
-Hotel ..> BusinessRuleException : throws
-Hotel ..> EntityNotFoundException : throws
-@enduml
+    Hotel "1" o-- "0..*" IRoom : gestiona
+    Hotel "1" o-- "0..*" Guest : gestiona
+    Hotel "1" *-- "0..*" Reservation : gestiona
+    Hotel "1" *-- "0..*" Invoice : emite
+    Hotel "1" *-- "0..*" Payment : registra
+    Reservation "0..*" --> "1" IGuest : huésped
+    Reservation "0..*" --> "1" IRoom : habitación
+    Reservation "1" *-- "0..*" AdditionalService : servicios
+    Invoice "0..1" --> "1" Reservation : factura de
+    Payment "0..1" --> "1" Invoice : paga
+    Hotel ..> BusinessRuleException : lanza
+    Hotel ..> EntityNotFoundException : lanza
 ```
 
 ---
 
-## 3. Sequence Diagram (Reservation Creation Workflow)
+## 3. Diagrama de secuencia — Crear reserva (HU-09)
 
-Models message exchanges between domain components to satisfy business rules (overbooking check).
+Muestra cómo se validan las reglas RN-05 (sin cruce de fechas) y RN-13 (no reservar en el pasado ni en mantenimiento).
 
-```plantuml
-@startuml
-autonumber
-actor Receptionist as Recep
-participant "System_hotel (CLI)" as CLI
-participant "Hotel" as Hotel
-participant "Reservation" as Res
-participant "Room" as Room
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Recep as Recepcionista
+    participant CLI as System_hotel (consola)
+    participant Hotel
+    participant Room as IRoom
+    participant Res as Reservation
 
-Recep -> CLI : Inputs reservation details (doc, roomNum, dates)
-CLI -> Hotel : createReservation(doc, roomNum, start, end)
-activate Hotel
-
-Hotel -> Hotel : findGuest(doc)
-Hotel -> Hotel : findRoom(roomNum)
-
-alt Guest or Room not found
-    Hotel --> CLI : throws EntityNotFoundException
-    CLI --> Recep : Displays "Entity not found"
-else Entities exist
-    loop For each existing reservation for target room
-        Hotel -> Res : overlaps(start, end)
-        Res --> Hotel : boolean
+    Recep->>CLI: Documento, habitación, fecha de entrada y de salida
+    CLI->>Hotel: createReservation(doc, room, in, out)
+    activate Hotel
+    Hotel->>Hotel: findGuest(doc) / findRoom(room)
+    alt Huésped o habitación no existen
+        Hotel-->>CLI: EntityNotFoundException
+        CLI-->>Recep: "... no fue encontrado(a)"
+    else Datos encontrados
+        Hotel->>Hotel: validar fechas (salida > entrada, entrada ≥ hoy)
+        Hotel->>Room: isBookable()
+        Room-->>Hotel: false si está en MAINTENANCE (RN-13)
+        loop Cada reserva PENDING/ACTIVE de la habitación
+            Hotel->>Res: overlaps(in, out)
+            Res-->>Hotel: true / false
+        end
+        alt Hay cruce de fechas (RN-05)
+            Hotel-->>CLI: BusinessRuleException("RN-05")
+            CLI-->>Recep: "La habitación no está disponible en el rango de fechas seleccionado"
+        else Habitación libre
+            Hotel->>Res: new Reservation(RES-AAAA-NNN, guest, room, in, out)
+            Hotel->>Hotel: guardar reserva y avanzar el consecutivo
+            Hotel-->>CLI: Reservation (PENDING)
+            CLI-->>Recep: "Reserva creada: RES-AAAA-NNN ..."
+        end
     end
-
-    alt Date overlap detected (BR-01)
-        Hotel --> CLI : throws BusinessRuleException("BR-01")
-        CLI --> Recep : Displays "Room unavailable for dates"
-    else Room available
-        create Res
-        Hotel -> Res : new Reservation(code, guest, room, start, end)
-        Hotel -> Hotel : addReservation(res)
-        Hotel --> CLI : returns Reservation (PENDING)
-        CLI --> Recep : Displays "Reservation Created Successfully"
-    end
-end
-deactivate Hotel
-@enduml
+    deactivate Hotel
 ```
 
 ---
 
-## 4. Activity Diagram (Check-out & Billing Process)
+## 4. Diagrama de actividades — Estadía, facturación y check-out (HU-12 a HU-14)
 
-Defines operational workflows, decision nodes, and system state transitions during guest check-out and invoice issue.
-
-```plantuml
-@startuml
-start
-:Receptionist initiates Check-out;
-:Input Reservation ID;
-
-if (Active reservation exists?) then (No)
-    :Display error "No active reservation found";
-    stop
-else (Yes)
-    :Enter additional services charge;
-    :Calculate total stay duration (days);
-    :Compute Total = (Stay Days * Night Rate) + Room Extra Fee + Additional Services;
-    :Present billing draft to receptionist;
-
-    if (Payment confirmed by guest?) then (No)
-        :Cancel Check-out operation;
-        stop
-    else (Yes)
-        :Generate Invoice record;
-        :Set Reservation status to COMPLETED;
-        :Update Room status to AVAILABLE;
-        :Print final Invoice receipt;
-        stop
-    endif
-endif
-@enduml
+```mermaid
+flowchart TD
+    A([Inicio]) --> B[/Código de reserva/]
+    B --> C{¿Reserva PENDING<br/>y dentro de su periodo?}
+    C -- No --> X1[Mostrar error: check-in no permitido] --> Z([Fin])
+    C -- Sí --> D{¿Habitación<br/>AVAILABLE?}
+    D -- No --> X2[Mostrar error: habitación no disponible] --> Z
+    D -- Sí --> E[Check-in: reserva ACTIVE,<br/>habitación OCCUPIED]
+    E --> F{¿El huésped consumió<br/>un servicio?}
+    F -- Sí --> G[Registrar servicio adicional] --> F
+    F -- No / fin de la estadía --> H[Generar factura:<br/>noches × tarifa + cargo Suite + servicios]
+    H --> I[Mostrar comprobante detallado]
+    I --> J{¿Pago registrado<br/>por el total?}
+    J -- No --> X3[Check-out bloqueado:<br/>saldo pendiente RN-09] --> J
+    J -- Sí --> K[Check-out: reserva COMPLETED]
+    K --> L[Habitación MAINTENANCE<br/>Mantenimiento/Limpieza RN-10]
+    L --> M[Recepcionista habilita la<br/>habitación como AVAILABLE]
+    M --> Z
 ```
