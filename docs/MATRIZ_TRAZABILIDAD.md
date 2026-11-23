@@ -24,46 +24,46 @@ Relaciona cada historia de usuario (Fase 1) con su requisito del SRS v2.0 (Fase 
 
 | HU | RF | Reglas | CU | Java | Base de datos | Prototipo |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| HU-01 Registrar habitación | RF-01 | RN-01 | CU-01 | `Hotel.registerRoom`, `RoomFactory.create`, validaciones de `Room` / `SuiteRoom` | `rooms`: `uq_rooms_number`, `ck_rooms_*` | Habitaciones → Nueva |
-| HU-02 Modificar habitación | RF-02 | RN-14 | CU-01 | `Hotel.updateRoomRate`, `Hotel.changeRoomType` | `rooms.price_per_night`, `rooms.type`, `rooms.capacity` | Habitaciones → Editar |
-| HU-03 Eliminar habitación | RF-03 | RN-02 | CU-01 | `Hotel.deleteRoom` (baja lógica) | `rooms.is_active`; FK `RESTRICT` | Habitaciones → Eliminar |
-| HU-04 Listar habitaciones | RF-04 | — | CU-01 | `Hotel.getAllRooms`, `Hotel.getRoomsByStatus` | `rooms.status` | Panel general, Habitaciones |
-| HU-05 Registrar huésped | RF-05 | RN-03 | — | `Hotel.registerGuest`, validaciones de `Person` | `guests`: `uq_guests_document`, `ck_guests_*` | Huéspedes → Registrar |
-| HU-06 Actualizar huésped | RF-06 | — | — | `Hotel.updateGuest`, `Guest.updatePersonalInfo` | `guests.full_name`, `email`, `phone` | Huéspedes → Editar |
-| HU-07 Eliminar huésped | RF-07 | RN-04 | — | `Hotel.deleteGuest` (baja lógica) | `guests.is_active`; consulta de referencia RN-04 | Huéspedes → Eliminar |
-| HU-08 Consultar huéspedes | RF-08 | — | — | `Hotel.searchGuests` (sin mayúsculas ni tildes) | — | Huéspedes → Buscar |
-| HU-09 Crear reserva | RF-09 | RN-05, RN-13 | CU-02 | `Hotel.createReservation`, `Reservation.overlaps` | `reservations`, `ck_reservations_dates`, `ix_reservations_overlap` | Reservas → Nueva |
-| HU-10 Cancelar reserva | RF-10 | RN-06 | — | `Hotel.cancelReservation`, `Reservation.cancel` | `reservations.status = CANCELLED` | Reservas → Cancelar |
-| HU-11 Consultar disponibilidad | RF-11 | RN-07 | CU-02 | `Hotel.getAvailableRooms` | Consulta de referencia RN-05/RN-07 | Disponibilidad |
-| HU-12 Check-in | RF-12 | RN-08, RN-15 | CU-03 | `Hotel.checkIn`, `Reservation.checkIn(today)` | `reservations.status = ACTIVE`, `rooms.status = OCCUPIED` | Estadías → Check-in |
-| HU-13 Check-out | RF-13 | RN-09, RN-10, RN-15 | CU-03 | `Hotel.checkOut`, `Reservation.checkOut` | `payments` (cuenta saldada), `rooms.status = MAINTENANCE` | Estadías → Check-out |
-| HU-14 Generar factura | RF-14 | RN-11, RN-12 | CU-03 | `Hotel.addService`, `Hotel.generateInvoice`, `Hotel.registerPayment`, `Invoice`, `Payment` | `additional_services`, `invoices`, `payments`, `ck_invoices_total`, triggers | Estadías → Servicio / Factura / Cobrar; Facturación |
+| HU-01 Registrar habitación | RF-01 | RN-01 | CU-01 | `RoomService.register`, `RoomFactory.create`, validaciones de `Room` / `SuiteRoom` | `rooms`: `uq_rooms_number`, `ck_rooms_*` | Habitaciones → Nueva |
+| HU-02 Modificar habitación | RF-02 | RN-14 | CU-01 | `RoomService.updateRate`, `RoomService.changeType` | `rooms.price_per_night`, `rooms.type`, `rooms.capacity` | Habitaciones → Editar |
+| HU-03 Eliminar habitación | RF-03 | RN-02 | CU-01 | `RoomService.delete` (baja lógica) | `rooms.is_active`; FK `RESTRICT` | Habitaciones → Eliminar |
+| HU-04 Listar habitaciones | RF-04 | — | CU-01 | `RoomService.getAll`, `RoomService.getByStatus` | `rooms.status` | Panel general, Habitaciones |
+| HU-05 Registrar huésped | RF-05 | RN-03 | — | `GuestService.register`, validaciones de `Person` | `guests`: `uq_guests_document`, `ck_guests_*` | Huéspedes → Registrar |
+| HU-06 Actualizar huésped | RF-06 | — | — | `GuestService.update`, `Guest.updatePersonalInfo` | `guests.full_name`, `email`, `phone` | Huéspedes → Editar |
+| HU-07 Eliminar huésped | RF-07 | RN-04 | — | `GuestService.delete` (baja lógica) | `guests.is_active`; consulta de referencia RN-04 | Huéspedes → Eliminar |
+| HU-08 Consultar huéspedes | RF-08 | — | — | `GuestService.search` (sin mayúsculas ni tildes) | — | Huéspedes → Buscar |
+| HU-09 Crear reserva | RF-09 | RN-05, RN-13 | CU-02 | `ReservationService.create`, `Reservation.overlaps` | `reservations`, `ck_reservations_dates`, `ix_reservations_overlap` | Reservas → Nueva |
+| HU-10 Cancelar reserva | RF-10 | RN-06 | — | `ReservationService.cancel`, `Reservation.cancel` | `reservations.status = CANCELLED` | Reservas → Cancelar |
+| HU-11 Consultar disponibilidad | RF-11 | RN-07 | CU-02 | `ReservationService.getAvailableRooms` | Consulta de referencia RN-05/RN-07 | Disponibilidad |
+| HU-12 Check-in | RF-12 | RN-08, RN-15 | CU-03 | `ReservationService.checkIn`, `Reservation.checkIn(today)` | `reservations.status = ACTIVE`, `rooms.status = OCCUPIED` | Estadías → Check-in |
+| HU-13 Check-out | RF-13 | RN-09, RN-10, RN-15 | CU-03 | `ReservationService.checkOut`, `Reservation.checkOut` | `payments` (cuenta saldada), `rooms.status = MAINTENANCE` | Estadías → Check-out |
+| HU-14 Generar factura | RF-14 | RN-11, RN-12 | CU-03 | `BillingService.addService`, `BillingService.generateInvoice`, `BillingService.registerPayment`, `Invoice`, `Payment` | `additional_services`, `invoices`, `payments`, `ck_invoices_total`, triggers | Estadías → Servicio / Factura / Cobrar; Facturación |
 
 ## 3. Reglas de negocio
 
 | Regla | Descripción | Java | Base de datos |
 | :--- | :--- | :--- | :--- |
-| RN-01 | Número de habitación único | `Hotel.registerRoom` | `uq_rooms_number` |
-| RN-02 | No eliminar habitación ocupada o con reservas futuras | `Hotel.deleteRoom` | FK `RESTRICT` |
-| RN-03 | Documento de huésped único | `Hotel.registerGuest` | `uq_guests_document` |
-| RN-04 | No eliminar huésped con hospedaje activo, reservas vigentes o facturas sin pagar | `Hotel.deleteGuest` | Consulta de referencia al final del script |
-| RN-05 | Sin cruce de fechas; salida exclusiva | `Reservation.overlaps`, `Hotel.createReservation` | `ck_reservations_dates`, `ix_reservations_overlap` |
+| RN-01 | Número de habitación único | `RoomService.register` | `uq_rooms_number` |
+| RN-02 | No eliminar habitación ocupada o con reservas futuras | `RoomService.delete` | FK `RESTRICT` |
+| RN-03 | Documento de huésped único | `GuestService.register` | `uq_guests_document` |
+| RN-04 | No eliminar huésped con hospedaje activo, reservas vigentes o facturas sin pagar | `GuestService.delete` | Consulta de referencia al final del script |
+| RN-05 | Sin cruce de fechas; salida exclusiva | `Reservation.overlaps`, `ReservationService.create` | `ck_reservations_dates`, `ix_reservations_overlap` |
 | RN-06 | Cancelar libera las fechas | `Reservation.cancel` + `ReservationStatus.blocksRoom` | `status = CANCELLED` |
-| RN-07 | Disponibilidad excluye cruces y mantenimiento | `Hotel.getAvailableRooms` | Consulta de referencia |
+| RN-07 | Disponibilidad excluye cruces y mantenimiento | `ReservationService.getAvailableRooms` | Consulta de referencia |
 | RN-08 | Check-in: reserva pendiente, dentro de su periodo, habitación disponible → Ocupada | `Reservation.checkIn` | — |
-| RN-09 | Check-out exige la cuenta saldada | `Hotel.checkOut` | `payments`, `trg_payments_full_amount` |
+| RN-09 | Check-out exige la cuenta saldada | `ReservationService.checkOut` | `payments`, `trg_payments_full_amount` |
 | RN-10 | Después del check-out, habitación en Mantenimiento/Limpieza | `Reservation.checkOut` | `rooms.status` |
 | RN-11 | Total = noches × tarifa + cargo extra Suite + servicios | `Invoice`, `Room.calculatePrice` | `ck_invoices_total` |
-| RN-12 | Factura inmutable y única por estadía | `Invoice` (campos `final`), `Hotel.generateInvoice`, `Hotel.addService` | `uq_invoices_reservation`, `trg_invoices_no_update/delete`, `trg_services_not_invoiced` |
-| RN-13 | No reservar en el pasado ni en mantenimiento | `Hotel.createReservation`, `Room.isBookable` | — |
-| RN-14 | Cambio de tipo solo sin reservas pendientes o activas | `Hotel.changeRoomType` | — |
-| RN-15 | `OCCUPIED` solo por check-in / check-out | `Hotel.changeRoomStatus` | — |
+| RN-12 | Factura inmutable y única por estadía | `Invoice` (campos `final`), `BillingService.generateInvoice`, `BillingService.addService` | `uq_invoices_reservation`, `trg_invoices_no_update/delete`, `trg_services_not_invoiced` |
+| RN-13 | No reservar en el pasado ni en mantenimiento | `ReservationService.create`, `Room.isBookable` | — |
+| RN-14 | Cambio de tipo solo sin reservas pendientes o activas | `RoomService.changeType` | — |
+| RN-15 | `OCCUPIED` solo por check-in / check-out | `RoomService.changeStatus` | — |
 
 ## 4. Requisitos no funcionales
 
 | RNF | Cómo se cumple |
 | :--- | :--- |
-| RNF01 Mantenibilidad (POO/SOLID) | `System_hotel` solo lee y muestra; las reglas viven en `Hotel` y las entidades. Interfaces `IRoom` / `IGuest` (inversión de dependencias), `RoomFactory` (abierto/cerrado), subclases de `Room` (sustitución de Liskov). |
+| RNF01 Mantenibilidad (POO/SOLID) | `System_hotel` solo lee y muestra; las reglas viven en los servicios `RoomService`, `GuestService`, `ReservationService` y `BillingService` (uno por área, alta cohesión) y en las entidades; `HotelStore` solo guarda y busca datos y `Hotel` solo conecta las piezas. Interfaces `IRoom` / `IGuest` (inversión de dependencias), `RoomFactory` (abierto/cerrado), subclases de `Room` (sustitución de Liskov). |
 | RNF02 Identificadores en inglés | Todas las clases, métodos y atributos (RS-03). |
 | RNF03 Menús numerados con "Volver" y confirmación | `System_hotel` (submenús con `0. Volver`), `ConsoleUtils.confirm`. |
 | RNF04 Validación sin cierres abruptos | Validación en constructores y setters; `IllegalArgumentException`, `BusinessRuleException` (con código de regla) y `EntityNotFoundException` capturadas por el menú. Restricciones `CHECK`/`UNIQUE`/FK en la BD. |
