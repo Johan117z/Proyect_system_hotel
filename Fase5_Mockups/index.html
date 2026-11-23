@@ -88,6 +88,9 @@ input[readonly],select:disabled{background:#f4f5f8;color:#8b92a3;cursor:not-allo
 .icon-btn{border:0;background:transparent;cursor:pointer;padding:8px;border-radius:var(--r-md);color:inherit;display:inline-flex}
 .icon-btn:hover{background:var(--hover)}
 .form-error{background:var(--bad-bg);color:var(--bad);border:1px solid var(--bad-line);border-radius:var(--r-md);padding:10px 12px;font-size:13px;margin-bottom:12px}
+.form-grid label.bad{color:var(--bad)}
+.form-grid label.bad input,.form-grid label.bad select{border-color:var(--bad)}
+.field-err{display:block;font-size:12px;font-weight:400;margin-top:4px}
 .hint{display:block;color:var(--muted);font-weight:400;margin-top:6px;font-size:12px}
 
 /* ---------- Layout ---------- */
@@ -241,6 +244,16 @@ table.table{width:100%;border-collapse:collapse;min-width:640px}
   .toolbar input,.toolbar select{width:100%}
   .login-panel{padding:26px 22px}
 }
+/* Móvil: cada fila de tabla se vuelve una tarjeta vertical, sin desplazamiento lateral */
+@media(max-width:640px){
+  .table-wrap table.table{min-width:0!important}
+  .table-wrap .table thead{display:none}
+  .table-wrap .table tr{display:block;border-bottom:1px solid var(--line);padding:8px 0}
+  .table-wrap .table td{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px 12px;text-align:right;border:0;padding:6px 16px}
+  .table-wrap .table td::before{content:attr(data-label);color:var(--muted);font-size:12px;text-align:left}
+  .table-wrap .table td.empty{display:block;text-align:center}
+  .table-wrap .table td.empty::before{content:none}
+}
 </style>
 </head>
 <body>
@@ -330,13 +343,14 @@ const diffDays = (a, b) => {
   return Math.round((Date.UTC(pb[0], pb[1] - 1, pb[2]) - Date.UTC(pa[0], pa[1] - 1, pa[2])) / 864e5);
 };
 const fmtDate = iso => iso ? iso.split('-').reverse().join('/') : '—';          // dd/mm/aaaa
-const parseDate = str => {                                                       // dd/mm/aaaa -> ISO | null
-  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(str).trim());
+const parseDate = str => {                                                       // aaaa-mm-dd (valor de <input type="date">) -> ISO | null
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(str).trim());
   if (!m) return null;
-  const d = +m[1], mo = +m[2], y = +m[3], dt = new Date(y, mo - 1, d);
+  const y = +m[1], mo = +m[2], d = +m[3], dt = new Date(y, mo - 1, d);
   if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d || y < 2000 || y > 2100) return null;
-  return `${m[3]}-${m[2]}-${m[1]}`;
+  return m[0];
 };
+console.assert(parseDate('2026-02-28') === '2026-02-28' && parseDate('2026-02-30') === null && parseDate('') === null, 'parseDate');
 const round2 = n => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 // Formato colombiano, igual que la aplicaci\u00f3n Java: "$ 120.000 COP" o "$ 25.000,50 COP"
 const fmtCOP = n => {
@@ -348,7 +362,10 @@ const code = (p, id) => `${p}-${String(id).padStart(4, '0')}`;
 // C\u00f3digo de reserva RES-AAAA-NNN (reservations.reservation_code): a\u00f1o de entrada + consecutivo
 const resCode = r => `RES-${String(r.entrada).slice(0, 4)}-${String(r.id).padStart(3, '0')}`;
 const optionsHTML = (items, sel) => items.map(([v, l]) => `<option value="${esc(v)}"${String(v) === String(sel) ? ' selected' : ''}>${esc(l)}</option>`).join('');
-const dateInput = (name, iso) => `<input name="${name}" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" data-mask="date" autocomplete="off" value="${iso ? fmtDate(iso) : ''}">`;
+const dateInput = (name, iso) => `<input name="${name}" type="date" min="2000-01-01" max="2100-12-31" value="${esc(iso || '')}">`;
+// Casilla con búsqueda (datalist nativo): escribir filtra las opciones en vez de bajar por una lista sin fin.
+const pickInput = (name, items, sel) => `<input name="${name}" list="${name}List" placeholder="Escriba para buscar…" autocomplete="off" value="${esc((items.find(([v]) => String(v) === String(sel)) || [])[1] || '')}"><datalist id="${name}List">${items.map(([, l]) => `<option value="${esc(l)}">`).join('')}</datalist>`;
+const pickId = (input, items) => (items.find(([, l]) => l === input.value.trim()) || [0])[0];
 
 // Iconos de línea (SVG en línea, sin dependencias)
 const ICONS = {
@@ -498,7 +515,7 @@ function fail(msg) {
   return false;
 }
 function closeModal() { $('#modalRoot').innerHTML = ''; }
-function openModal({ title, body, saveLabel = 'Guardar', cancelLabel = 'Cancelar', onSave, onOpen, wide = false, danger = false }) {
+function openModal({ title, body, saveLabel = 'Guardar', cancelLabel = 'Cancelar', onSave, onOpen, checks = {}, wide = false, danger = false }) {
   closeModal();
   $('#modalRoot').innerHTML = `
     <div class="modal-backdrop">
@@ -514,8 +531,21 @@ function openModal({ title, body, saveLabel = 'Guardar', cancelLabel = 'Cancelar
       </div>
     </div>`;
   const f = $('#modalForm');
+  // checks: { campo: f => 'mensaje' | '' }. Cada casilla se valida al salir de ella y todas al guardar;
+  // la etiqueta (con su asterisco) se pinta de rojo y muestra el motivo debajo.
+  const mark = name => {
+    const lbl = f.elements[name].closest('label'), msg = checks[name](f) || '';
+    let m = lbl.querySelector('.field-err');
+    if (!m) { m = document.createElement('small'); m.className = 'field-err'; lbl.append(m); }
+    lbl.classList.toggle('bad', !!msg); m.textContent = msg;
+    return msg;
+  };
+  f.addEventListener('focusout', e => { if (checks[e.target.name]) mark(e.target.name); });
+  f.addEventListener('input', e => { if (checks[e.target.name] && e.target.closest('label.bad')) mark(e.target.name); });
   f.addEventListener('submit', e => {
     e.preventDefault();
+    const bad = Object.keys(checks).filter(mark);
+    if (bad.length) return f.elements[bad[0]].focus();
     if (onSave && onSave(f) === false) return;
     closeModal();
   });
@@ -572,14 +602,17 @@ function roomForm(id) {
     </div>`;
   openModal({
     title: r ? `Editar habitación ${r.numero}` : 'Nueva habitación', body,
+    checks: {
+      numero: f => { const n = f.numero.value.trim();
+        return !n ? 'Campo obligatorio' : !/^\d{1,5}$/.test(n) || +n < 1 || +n > 65535 ? 'Debe estar entre 1 y 65535'
+          : state.rooms.some(x => x.id !== id && +x.numero === +n) ? 'Ya se encuentra registrado' : ''; },
+      capacidad: f => { const c = Number(f.capacidad.value); return Number.isInteger(c) && c >= 1 && c <= 255 ? '' : 'Debe estar entre 1 y 255 huéspedes'; },
+      tarifa: f => Number(f.tarifa.value) > 0 ? '' : 'Debe ser un valor mayor a cero',
+      cargoExtra: f => f.tipo.value === 'Suite' && Number(f.cargoExtra.value || 0) < 0 ? 'No puede ser negativo' : ''
+    },
     onSave: f => {
       const numero = f.numero.value.trim(), tipo = f.tipo.value, tarifa = Number(f.tarifa.value);
       const capacidad = Number(f.capacidad.value), cargoExtra = tipo === 'Suite' ? round2(f.cargoExtra.value || 0) : 0;
-      if (!/^\d{1,5}$/.test(numero) || +numero < 1 || +numero > 65535) return fail('El número de habitación debe estar entre 1 y 65535');
-      if (!Number.isInteger(capacidad) || capacidad < 1 || capacidad > 255) return fail('La capacidad debe estar entre 1 y 255 huéspedes');
-      if (!(tarifa > 0)) return fail('La tarifa por noche debe ser un valor mayor a cero');
-      if (cargoExtra < 0) return fail('El cargo extra no puede ser negativo');
-      if (state.rooms.some(x => x.id !== id && +x.numero === +numero)) return fail('El número de habitación ya se encuentra registrado');
       if (r) {
         if (tarifa !== r.tarifa && !guard('rooms.tarifa')) return false;
         const estado = f.estado.value;
@@ -624,16 +657,20 @@ function guestForm(id) {
     </div>`;
   openModal({
     title: g ? 'Editar huésped' : 'Registrar huésped', body,
+    // Mismas reglas que Person (Java) y la tabla guests: documento 6-10 dígitos, celular 10 dígitos,
+    // nombre completo (nombres + apellidos) hasta 60 caracteres, correo obligatorio hasta 80.
+    checks: {
+      nombre: f => f.nombre.value.trim() ? '' : 'Campo obligatorio',
+      apellido: f => !f.apellido.value.trim() ? 'Campo obligatorio'
+        : `${f.nombre.value.trim()} ${f.apellido.value.trim()}`.length > 60 ? 'El nombre completo admite máximo 60 caracteres' : '',
+      documento: f => { const v = f.documento.value.trim();
+        return !v ? 'Campo obligatorio' : !/^\d{6,10}$/.test(v) ? 'Debe tener entre 6 y 10 dígitos'
+          : state.guests.some(x => x.id !== id && x.documento === v) ? 'El huésped ya existe en el sistema' : ''; },
+      telefono: f => { const v = f.telefono.value.trim(); return !v ? 'Campo obligatorio' : /^\d{10}$/.test(v) ? '' : 'Debe tener 10 dígitos'; },
+      email: f => { const v = f.email.value.trim(); return !v ? 'Campo obligatorio' : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? '' : 'El correo electrónico no es válido'; }
+    },
     onSave: f => {
       const d = { nombre: f.nombre.value.trim(), apellido: f.apellido.value.trim(), documento: f.documento.value.trim(), telefono: f.telefono.value.trim(), email: f.email.value.trim() };
-      // Mismas reglas que Person (Java) y la tabla guests: documento 6-10 dígitos, celular 10 dígitos,
-      // nombre completo (nombres + apellidos) hasta 60 caracteres, correo obligatorio hasta 80.
-      if (!d.nombre || !d.apellido) return fail('Nombres y apellidos son obligatorios');
-      if (`${d.nombre} ${d.apellido}`.length > 60) return fail('El nombre completo admite máximo 60 caracteres');
-      if (!/^\d{6,10}$/.test(d.documento)) return fail('El documento debe tener entre 6 y 10 dígitos');
-      if (state.guests.some(x => x.id !== id && x.documento === d.documento)) return fail('El huésped ya existe en el sistema');
-      if (!/^\d{10}$/.test(d.telefono)) return fail('El teléfono debe tener 10 dígitos');
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) return fail('El correo electrónico no es válido');
       if (g) { Object.assign(g, d); toast('Huésped actualizado', 'success'); }
       else { state.guests.push({ id: nextId('guest'), ...d }); toast(`Huésped ${d.nombre} ${d.apellido} registrado`, 'success'); }
       commit();
@@ -657,10 +694,13 @@ function reservationForm(opts = {}) {
   if (!state.guests.length) return toast('Registre al menos un huésped antes de crear una reserva', 'warn');
   if (!state.rooms.length) return toast('Registre al menos una habitación antes de crear una reserva', 'warn');
   const gSel = r ? r.huespedId : opts.huespedId, hSel = r ? r.habitacionId : opts.habitacionId;
+  const gItems = state.guests.map(g => [g.id, `${g.nombre} ${g.apellido} — ${g.documento}`]);
+  // RN-13: las habitaciones en mantenimiento no se pueden reservar, así que no se ofrecen
+  const hItems = state.rooms.filter(h => h.estado !== 'Mantenimiento' || h.id === hSel).map(h => [h.id, `Hab. ${h.numero} · ${h.tipo} · ${fmtCOP(h.tarifa)}/noche`]);
   const body = `
     <div class="form-grid">
-      <label class="span2">Huésped *<select name="huesped"><option value="">Seleccione…</option>${optionsHTML(state.guests.map(g => [g.id, `${g.nombre} ${g.apellido} — ${g.documento}`]), gSel)}</select></label>
-      <label class="span2">Habitación *<select name="habitacion"><option value="">Seleccione…</option>${optionsHTML(state.rooms.map(h => [h.id, `Hab. ${h.numero} · ${h.tipo} · ${fmtCOP(h.tarifa)}/noche`]), hSel)}</select></label>
+      <label class="span2">Huésped *${pickInput('huesped', gItems, gSel)}</label>
+      <label class="span2">Habitación *${pickInput('habitacion', hItems, hSel)}</label>
       <label>Fecha de entrada *${dateInput('entrada', r ? r.entrada : opts.entrada)}</label>
       <label>Fecha de salida *${dateInput('salida', r ? r.salida : opts.salida)}</label>
     </div>
@@ -669,22 +709,25 @@ function reservationForm(opts = {}) {
     title: r ? `Editar reserva ${resCode(r)}` : 'Nueva reserva', body,
     onOpen: f => {
       const upd = () => setTimeout(() => {
-        const e = parseDate(f.entrada.value), s = parseDate(f.salida.value), rm = room(Number(f.habitacion.value)), box = $('#resPreview');
+        const e = parseDate(f.entrada.value), s = parseDate(f.salida.value), rm = room(pickId(f.habitacion, hItems)), box = $('#resPreview');
         if (!box) return;
         if (e && s && s > e && rm) { const n = diffDays(e, s); box.textContent = `${n} noche(s) · Alojamiento estimado: ${fmtCOP(n * rm.tarifa)}`; }
-        else box.textContent = 'Ingrese fechas válidas (dd/mm/aaaa) para ver el estimado.';
+        else box.textContent = 'Elija habitación y fechas para ver el estimado.';
       }, 0);
       f.addEventListener('input', upd); f.addEventListener('change', upd); upd();
     },
+    checks: {
+      huesped: f => pickId(f.huesped, gItems) ? '' : f.huesped.value.trim() ? 'Elija un huésped de la lista' : 'Campo obligatorio',
+      habitacion: f => { const id = pickId(f.habitacion, hItems);
+        return !id ? (f.habitacion.value.trim() ? 'Elija una habitación de la lista' : 'Campo obligatorio')
+          : room(id).estado === 'Mantenimiento' ? `La habitación ${roomNum(id)} está en mantenimiento` : ''; },   // RN-13
+      entrada: f => { const e = parseDate(f.entrada.value); return !e ? 'Elija una fecha válida' : e < todayISO() ? 'No puede ser anterior a hoy' : ''; },
+      salida: f => { const e = parseDate(f.entrada.value), s = parseDate(f.salida.value);
+        return !s ? 'Elija una fecha válida' : e && s <= e ? 'Debe ser posterior a la fecha de entrada' : ''; }
+    },
     onSave: f => {
-      const gid = Number(f.huesped.value), rid = Number(f.habitacion.value);
-      if (!gid) return fail('Seleccione un huésped');
-      if (!rid) return fail('Seleccione una habitación');
+      const gid = pickId(f.huesped, gItems), rid = pickId(f.habitacion, hItems);
       const e = parseDate(f.entrada.value), s = parseDate(f.salida.value);
-      if (!e || !s) return fail('Fecha inválida. Use el formato dd/mm/aaaa con fechas reales');
-      if (s <= e) return fail('La fecha de salida debe ser estrictamente posterior a la fecha de entrada');
-      if (e < todayISO()) return fail('La fecha de entrada no puede ser anterior a hoy');
-      if (room(rid).estado === 'Mantenimiento') return fail(`La habitación ${roomNum(rid)} está en mantenimiento`);   // RN-13
       if (conflicts(rid, e, s, r && r.id).length) return fail('La habitación no está disponible en el rango de fechas seleccionado');
       if (r) {
         Object.assign(r, { huespedId: gid, habitacionId: rid, entrada: e, salida: s });
@@ -727,10 +770,12 @@ function serviceForm(stayId) {
     title: `Agregar servicio · Hab. ${roomNum(s.habitacionId)}`,
     body: `<div class="form-grid"><label class="span2">Descripción *<input name="descripcion" maxlength="60" placeholder="Ej. Desayuno, Lavandería, Minibar"></label>
            <label class="span2">Valor (COP) *<input name="monto" type="number" min="0.01" step="0.01"></label></div>`,
+    checks: {
+      descripcion: f => f.descripcion.value.trim() ? '' : 'Campo obligatorio',
+      monto: f => round2(f.monto.value) > 0 ? '' : 'Debe ser mayor a cero'
+    },
     onSave: f => {
       const descripcion = f.descripcion.value.trim(), monto = round2(f.monto.value);
-      if (!descripcion) return fail('La descripción del servicio es obligatoria');
-      if (!(monto > 0)) return fail('El valor del servicio debe ser mayor a cero');
       s.servicios.push({ descripcion, monto });
       commit(); toast(`Servicio agregado: ${descripcion} (${fmtCOP(monto)})`, 'success');
     }
@@ -934,7 +979,7 @@ function viewReservations() {
 
 function viewAvailability() {
   const t = todayISO();
-  const a = ui.avail || { entrada: fmtDate(t), salida: fmtDate(addDays(t, 1)), range: { e: t, s: addDays(t, 1) } };
+  const a = ui.avail || { entrada: t, salida: addDays(t, 1), range: { e: t, s: addDays(t, 1) } };
   let results = '<p class="muted" style="padding:22px">Ingrese un rango de fechas válido y presione Consultar.</p>';
   if (a.range) {
     const n = diffDays(a.range.e, a.range.s);
@@ -954,8 +999,8 @@ function viewAvailability() {
   return `<div class="view-head"><h3>Consulta de disponibilidad</h3></div>
     <form id="availForm" class="panel" style="margin-bottom:22px" novalidate>
       <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));align-items:end">
-        <label>Fecha de entrada<input name="entrada" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" data-mask="date" value="${esc(a.entrada)}" autocomplete="off"></label>
-        <label>Fecha de salida<input name="salida" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" data-mask="date" value="${esc(a.salida)}" autocomplete="off"></label>
+        <label>Fecha de entrada${dateInput('entrada', a.entrada)}</label>
+        <label>Fecha de salida${dateInput('salida', a.salida)}</label>
         <button class="btn btn-primary" type="submit">${ico('search', 15)} Consultar</button>
       </div></form>
     <div class="table-wrap">${results}</div>`;
@@ -1034,8 +1079,16 @@ function render() {
   $('#pageTitle').textContent = v.title;
   $('#crumb').textContent = 'Gran Continental';
   $('#view').innerHTML = v.render();
+  labelCells();
   if (ui.view === 'huespedes') updateGuestCount();
   renderNav(); renderUser();
+}
+// En móvil cada celda muestra el título de su columna (data-label, ver CSS max-width:640px)
+function labelCells() {
+  document.querySelectorAll('#view .table-wrap table.table').forEach(t => {
+    const heads = [...t.querySelectorAll('thead th')].map(th => th.textContent.trim());
+    t.querySelectorAll('tbody tr').forEach(tr => [...tr.children].forEach((td, i) => { td.dataset.label = heads[i] || ''; }));
+  });
 }
 function updateGuestCount() {
   const el = $('#guestCount'); if (!el) return;
@@ -1079,14 +1132,8 @@ $('#scrim').addEventListener('click', () => $('#app').classList.remove('nav-open
 
 document.addEventListener('input', e => {
   const t = e.target;
-  if (t.dataset && t.dataset.mask === 'date') {                  // máscara dd/mm/aaaa
-    let v = t.value.replace(/\D/g, '').slice(0, 8);
-    if (v.length > 4) v = v.slice(0, 2) + '/' + v.slice(2, 4) + '/' + v.slice(4);
-    else if (v.length > 2) v = v.slice(0, 2) + '/' + v.slice(2);
-    t.value = v;
-  }
   if (t.id === 'guestSearch') {                                  // búsqueda reactiva
-    ui.guestQuery = t.value; $('#guestRows').innerHTML = guestRows(); updateGuestCount();
+    ui.guestQuery = t.value; $('#guestRows').innerHTML = guestRows(); labelCells(); updateGuestCount();
   }
 });
 document.addEventListener('change', e => { if (e.target.id === 'resFilter') { ui.resFilter = e.target.value; render(); } });
@@ -1094,7 +1141,7 @@ document.addEventListener('submit', e => {
   if (e.target.id !== 'availForm') return;
   e.preventDefault();
   const f = e.target, eRaw = f.entrada.value, sRaw = f.salida.value, en = parseDate(eRaw), sa = parseDate(sRaw);
-  if (!en || !sa) { ui.avail = { entrada: eRaw, salida: sRaw, range: null }; render(); return toast('Fecha inválida. Use el formato dd/mm/aaaa con fechas reales', 'error'); }
+  if (!en || !sa) { ui.avail = { entrada: eRaw, salida: sRaw, range: null }; render(); return toast('Elija la fecha de entrada y la de salida', 'error'); }
   if (sa <= en) { ui.avail = { entrada: eRaw, salida: sRaw, range: null }; render(); return toast('La fecha de salida debe ser estrictamente posterior a la fecha de entrada', 'error'); }
   ui.avail = { entrada: eRaw, salida: sRaw, range: { e: en, s: sa } }; render();
 });
