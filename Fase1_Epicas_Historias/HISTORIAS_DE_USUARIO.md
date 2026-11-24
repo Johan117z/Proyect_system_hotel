@@ -169,10 +169,10 @@ El SRS v2.0 (`Fase2_Requerimientos/SRS.md`) numera estas reglas como RN-01 a RN-
 
 | Historias | Clases Java (Fase 6) | Responsabilidad |
 | :--- | :--- | :--- |
-| HU-01 a HU-04 | `IRoom`, `Room`, `SingleRoom`, `DoubleRoom`, `SuiteRoom`, `RoomFactory`, `Hotel` | Registro, modificación, eliminación y listado de habitaciones. |
-| HU-05 a HU-08 | `IGuest`, `Person`, `Guest`, `Hotel` | Registro, actualización, eliminación y consulta de huéspedes. |
-| HU-09 a HU-11 | `Reservation`, `IRoom`, `Hotel` | Reservas y validación de disponibilidad por fechas. |
-| HU-12, HU-13 | `Reservation`, `IRoom`, `Hotel` | Check-in, check-out y transición de estados. |
-| HU-14 | `AdditionalService`, `Invoice`, `Payment`, `Hotel` | Servicios, cálculo y generación de la factura, y pago. |
+| HU-01 a HU-04 | `IRoom`, `Room`, `SingleRoom`, `DoubleRoom`, `SuiteRoom`, `RoomFactory`, `RoomService` | Registro, modificación, eliminación y listado de habitaciones. |
+| HU-05 a HU-08 | `IGuest`, `Person`, `Guest`, `GuestService` | Registro, actualización, eliminación y consulta de huéspedes. |
+| HU-09 a HU-11 | `Reservation`, `IRoom`, `ReservationService` | Reservas y validación de disponibilidad por fechas. |
+| HU-12, HU-13 | `Reservation`, `IRoom`, `ReservationService` | Check-in, check-out y transición de estados. |
+| HU-14 | `AdditionalService`, `Invoice`, `Payment`, `BillingService` | Servicios, cálculo y generación de la factura, y pago. |
 
 La matriz completa (HU → RF → regla → clase → tabla) está en `docs/MATRIZ_TRAZABILIDAD.md`.

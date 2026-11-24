@@ -67,7 +67,9 @@ flowchart LR
 
 ## 2. Diagrama de clases
 
-Herencia e interfaces: `IRoom` ← `Room` (abstracta) ← `SingleRoom` / `DoubleRoom` / `SuiteRoom`; `IGuest` + `Person` (abstracta) ← `Guest`. `Hotel` concentra las reglas de negocio y depende de las interfaces (principio de inversión de dependencias). El dinero usa `BigDecimal` (`DECIMAL` en la BD) y los estados son enums.
+Herencia e interfaces: `IRoom` ← `Room` (abstracta) ← `SingleRoom` / `DoubleRoom` / `SuiteRoom`; `IGuest` + `Person` (abstracta) ← `Guest`. El dinero usa `BigDecimal` (`DECIMAL` en la BD) y los estados son enums.
+
+**Alta cohesión:** las reglas de negocio están repartidas en un servicio por épica: `RoomService` (HU-01 a HU-04), `GuestService` (HU-05 a HU-08), `ReservationService` (HU-09 a HU-13) y `BillingService` (HU-14). `HotelStore` solo guarda y busca datos (el papel de los repositorios cuando se conecte la base de datos) y `Hotel` solo crea y conecta las piezas. Los servicios no se llaman entre sí; dependen del almacén y de las interfaces `IRoom` / `IGuest` (bajo acoplamiento).
 
 ```mermaid
 classDiagram
@@ -187,28 +189,55 @@ classDiagram
     }
 
     class Hotel {
+        -name: String
+        +rooms() RoomService
+        +guests() GuestService
+        +reservations() ReservationService
+        +billing() BillingService
+    }
+    class RoomService {
+        +register(IRoom) void
+        +find(int) IRoom
+        +getAll() List~IRoom~
+        +getByStatus(RoomStatus) List~IRoom~
+        +updateRate(int, BigDecimal) void
+        +changeType(int, RoomType, int, BigDecimal, BigDecimal) IRoom
+        +changeStatus(int, RoomStatus) void
+        +delete(int) void
+    }
+    class GuestService {
+        +register(Guest) void
+        +find(String doc) Guest
+        +update(String doc, String name, String email, String phone) void
+        +delete(String doc) void
+        +search(String text) List~Guest~
+        +getAll() List~Guest~
+    }
+    class ReservationService {
+        +create(String doc, int room, LocalDate in, LocalDate out) Reservation
+        +getAvailableRooms(LocalDate in, LocalDate out) List~IRoom~
+        +find(String code) Reservation
+        +cancel(String code) Reservation
+        +checkIn(String code) Reservation
+        +checkOut(String code) Reservation
+    }
+    class BillingService {
+        +addService(String code, String description, BigDecimal amount) AdditionalService
+        +generateInvoice(String code) Invoice
+        +registerPayment(int invoiceId, PaymentMethod) Payment
+        +isPaid(Invoice) boolean
+    }
+    class HotelStore {
         -rooms: List~IRoom~
         -guests: List~Guest~
         -reservations: List~Reservation~
         -invoices: List~Invoice~
         -payments: List~Payment~
-        +registerRoom(IRoom) void
-        +updateRoomRate(int, BigDecimal) void
-        +changeRoomType(int, RoomType, int, BigDecimal, BigDecimal) IRoom
-        +changeRoomStatus(int, RoomStatus) void
-        +deleteRoom(int) void
-        +registerGuest(Guest) void
-        +updateGuest(String doc, String name, String email, String phone) void
-        +deleteGuest(String doc) void
-        +searchGuests(String text) List~Guest~
-        +createReservation(String doc, int room, LocalDate in, LocalDate out) Reservation
-        +getAvailableRooms(LocalDate in, LocalDate out) List~IRoom~
-        +cancelReservation(String code) Reservation
-        +checkIn(String code) Reservation
-        +addService(String code, String description, BigDecimal amount) AdditionalService
-        +generateInvoice(String code) Invoice
-        +registerPayment(int invoiceId, PaymentMethod) Payment
-        +checkOut(String code) Reservation
+        +findRoom(int) IRoom
+        +findGuest(String) Guest
+        +findReservation(String) Reservation
+        +findInvoice(int) Invoice
+        +isPaid(Invoice) boolean
     }
 
     class BusinessRuleException {
@@ -224,18 +253,28 @@ classDiagram
     IGuest <|.. Guest
     Person <|-- Guest
 
-    Hotel "1" o-- "0..*" IRoom : gestiona
-    Hotel "1" o-- "0..*" Guest : gestiona
-    Hotel "1" *-- "0..*" Reservation : gestiona
-    Hotel "1" *-- "0..*" Invoice : emite
-    Hotel "1" *-- "0..*" Payment : registra
+    Hotel *-- RoomService
+    Hotel *-- GuestService
+    Hotel *-- ReservationService
+    Hotel *-- BillingService
+    RoomService --> HotelStore : usa
+    GuestService --> HotelStore : usa
+    ReservationService --> HotelStore : usa
+    BillingService --> HotelStore : usa
+
+    HotelStore "1" o-- "0..*" IRoom : guarda
+    HotelStore "1" o-- "0..*" Guest : guarda
+    HotelStore "1" *-- "0..*" Reservation : guarda
+    HotelStore "1" *-- "0..*" Invoice : guarda
+    HotelStore "1" *-- "0..*" Payment : guarda
     Reservation "0..*" --> "1" IGuest : huésped
     Reservation "0..*" --> "1" IRoom : habitación
     Reservation "1" *-- "0..*" AdditionalService : servicios
     Invoice "0..1" --> "1" Reservation : factura de
     Payment "0..1" --> "1" Invoice : paga
-    Hotel ..> BusinessRuleException : lanza
-    Hotel ..> EntityNotFoundException : lanza
+    HotelStore ..> EntityNotFoundException : lanza
+    ReservationService ..> BusinessRuleException : lanza
+    note for BusinessRuleException "Los cuatro servicios la lanzan con el código de la regla (RN-xx)"
 ```
 
 ---
@@ -249,36 +288,37 @@ sequenceDiagram
     autonumber
     actor Recep as Recepcionista
     participant CLI as System_hotel (consola)
-    participant Hotel
+    participant Svc as ReservationService
+    participant Store as HotelStore
     participant Room as IRoom
     participant Res as Reservation
 
     Recep->>CLI: Documento, habitación, fecha de entrada y de salida
-    CLI->>Hotel: createReservation(doc, room, in, out)
-    activate Hotel
-    Hotel->>Hotel: findGuest(doc) / findRoom(room)
+    CLI->>Svc: hotel.reservations().create(doc, room, in, out)
+    activate Svc
+    Svc->>Store: findGuest(doc) / findRoom(room)
     alt Huésped o habitación no existen
-        Hotel-->>CLI: EntityNotFoundException
+        Store-->>CLI: EntityNotFoundException
         CLI-->>Recep: "... no fue encontrado(a)"
     else Datos encontrados
-        Hotel->>Hotel: validar fechas (salida > entrada, entrada ≥ hoy)
-        Hotel->>Room: isBookable()
-        Room-->>Hotel: false si está en MAINTENANCE (RN-13)
+        Svc->>Svc: validar fechas (salida > entrada, entrada ≥ hoy)
+        Svc->>Room: isBookable()
+        Room-->>Svc: false si está en MAINTENANCE (RN-13)
         loop Cada reserva PENDING/ACTIVE de la habitación
-            Hotel->>Res: overlaps(in, out)
-            Res-->>Hotel: true / false
+            Svc->>Res: overlaps(in, out)
+            Res-->>Svc: true / false
         end
         alt Hay cruce de fechas (RN-05)
-            Hotel-->>CLI: BusinessRuleException("RN-05")
+            Svc-->>CLI: BusinessRuleException("RN-05")
             CLI-->>Recep: "La habitación no está disponible en el rango de fechas seleccionado"
         else Habitación libre
-            Hotel->>Res: new Reservation(RES-AAAA-NNN, guest, room, in, out)
-            Hotel->>Hotel: guardar reserva y avanzar el consecutivo
-            Hotel-->>CLI: Reservation (PENDING)
+            Svc->>Res: new Reservation(RES-AAAA-NNN, guest, room, in, out)
+            Svc->>Store: addReservation(reserva) — avanza el consecutivo
+            Svc-->>CLI: Reservation (PENDING)
             CLI-->>Recep: "Reserva creada: RES-AAAA-NNN ..."
         end
     end
-    deactivate Hotel
+    deactivate Svc
 ```
 
 ---

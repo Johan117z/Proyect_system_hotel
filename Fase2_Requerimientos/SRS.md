@@ -160,7 +160,7 @@ Cada requisito corresponde a una de las 14 historias de usuario de la Fase 1 (RF
 
 | ID | Atributo | Descripción |
 | :--- | :--- | :--- |
-| **RNF01** | Mantenibilidad | El código sigue principios de POO (encapsulamiento, herencia, polimorfismo, interfaces) y SOLID, organizado en modelo, servicio (`Hotel`) e interfaz de consola, sin lógica de negocio en la capa de presentación. |
+| **RNF01** | Mantenibilidad | El código sigue principios de POO (encapsulamiento, herencia, polimorfismo, interfaces) y SOLID, organizado en modelo (entidades), servicios (`RoomService`, `GuestService`, `ReservationService`, `BillingService`, uno por épica), almacenamiento (`HotelStore`) e interfaz de consola, sin lógica de negocio en la capa de presentación. |
 | **RNF02** | Mantenibilidad | Los identificadores del código están en inglés y siguen las convenciones de Java (camelCase, PascalCase), conforme a RS-03. |
 | **RNF03** | Usabilidad | Todos los menús presentan opciones numeradas de forma secuencial e incluyen siempre una opción para volver. El 100 % de las opciones mostradas tiene una acción implementada. Las acciones que no se pueden deshacer (eliminar, cancelar) piden confirmación. |
 | **RNF04** | Confiabilidad | El sistema valida toda entrada (tipo de dato, campos vacíos, rangos, formatos) y captura las excepciones de forma controlada, de modo que ningún dato inválido cierre la aplicación. |

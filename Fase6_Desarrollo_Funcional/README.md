@@ -63,7 +63,12 @@ Every submenu has `0. Volver`; deleting and cancelling ask for confirmation (RNF
 | `AdditionalService` | Immutable class | Service consumed during the stay |
 | `Invoice` | Immutable class | Bill of the stay (RN-11, RN-12) |
 | `Payment` | Immutable class | Full payment of an invoice (RN-09) |
-| `Hotel` | Class | Business rules of the 14 user stories |
+| `RoomService` | Service | Room rules (HU-01 to HU-04) |
+| `GuestService` | Service | Guest rules (HU-05 to HU-08) |
+| `ReservationService` | Service | Reservations, availability, check-in and check-out (HU-09 to HU-13) |
+| `BillingService` | Service | Additional services, invoice and payment (HU-14) |
+| `HotelStore` | Store | Keeps and finds data in memory; the place of the repositories once the database is connected |
+| `Hotel` | Composition root | Creates the store and the four services and connects them |
 | `RoomType` / `RoomStatus` / `ReservationStatus` / `PaymentMethod` | Enums | Same values as the database ENUM columns |
 | `BusinessRuleException` / `EntityNotFoundException` | Exceptions | Rule violation (with its rule code) / missing entity |
 | `ConsoleUtils` | Utility | Validated input (numbers, COP amounts, dd/mm/aaaa dates, confirmation) and formatting |
