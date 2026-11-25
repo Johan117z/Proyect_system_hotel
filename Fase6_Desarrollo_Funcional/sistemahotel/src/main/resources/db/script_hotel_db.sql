@@ -61,6 +61,15 @@ CREATE TABLE reservations (
     INDEX ix_reservations_overlap (room_id, status, check_in_date, check_out_date)
 );
 
+-- 3b. Consecutivo del código RES-AAAA-NNN.
+--     La API lo lee con SELECT ... FOR UPDATE al crear una reserva: el bloqueo de esta fila hace que
+--     dos reservas simultáneas no reciban el mismo código y que el control de cruce (RN-05) no se salte.
+CREATE TABLE code_sequences (
+    name       VARCHAR(30) PRIMARY KEY,
+    next_value INT UNSIGNED NOT NULL,
+    CONSTRAINT ck_code_sequences_value CHECK (next_value > 0)
+);
+
 -- 4. Servicios adicionales consumidos durante la estadía (HU-14) -> clase AdditionalService
 CREATE TABLE additional_services (
     id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -158,6 +167,9 @@ INSERT INTO rooms (room_number, type, capacity, price_per_night, extra_service_f
 INSERT INTO reservations (reservation_code, guest_id, room_id, check_in_date, check_out_date, status) VALUES
 ('RES-2026-001', 1, 3, '2026-09-25', '2026-09-30', 'ACTIVE'),
 ('RES-2026-002', 2, 1, '2026-12-01', '2026-12-05', 'PENDING');
+
+-- La próxima reserva creada por la API recibe el número 003
+INSERT INTO code_sequences (name, next_value) VALUES ('reservation', 3);
 
 INSERT INTO additional_services (reservation_id, description, amount) VALUES
 (1, 'Lavandería', 30000.00);

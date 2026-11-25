@@ -33,33 +33,42 @@ public class ReservationService {
     private final PaymentRepository paymentRepository;
     private final GuestService guestService;
     private final RoomService roomService;
+    private final ReservationCodeGenerator codeGenerator;
 
     public ReservationService(ReservationRepository reservationRepository,
                               AdditionalServiceRepository additionalServiceRepository,
                               InvoiceRepository invoiceRepository,
                               PaymentRepository paymentRepository,
                               GuestService guestService,
-                              RoomService roomService) {
+                              RoomService roomService,
+                              ReservationCodeGenerator codeGenerator) {
         this.reservationRepository = reservationRepository;
         this.additionalServiceRepository = additionalServiceRepository;
         this.invoiceRepository = invoiceRepository;
         this.paymentRepository = paymentRepository;
         this.guestService = guestService;
         this.roomService = roomService;
+        this.codeGenerator = codeGenerator;
     }
 
     /** HU-09 / RN-05 (sin cruce de fechas) y RN-13 (ni en mantenimiento ni en el pasado). */
     @Transactional
     public ReservationResponseDTO create(ReservationRequestDTO request) {
-        Guest guest = guestService.getActiveGuest(request.guestDocument());
-        Room room = roomService.getActiveRoom(request.roomNumber());
         LocalDate checkIn = request.checkInDate();
         LocalDate checkOut = request.checkOutDate();
 
+        // Validaciones que no consultan la base de datos
         RoomService.validateRange(checkIn, checkOut);
         if (checkIn.isBefore(LocalDate.now())) {
             throw new BusinessRuleException("RN-13", "La fecha de entrada no puede ser anterior a hoy.");
         }
+
+        // Primera consulta de la transacción: toma el consecutivo con bloqueo (ver ReservationCodeGenerator).
+        // Desde aquí las reservas se crean de una en una, así el control de cruce (RN-05) es confiable.
+        String code = codeGenerator.next(checkIn);
+
+        Guest guest = guestService.getActiveGuest(request.guestDocument());
+        Room room = roomService.getActiveRoom(request.roomNumber());
         if (!room.isBookable()) {
             throw new BusinessRuleException("RN-13", "La habitación " + room.getRoomNumber() + " está en mantenimiento.");
         }
@@ -67,7 +76,7 @@ public class ReservationService {
             throw new BusinessRuleException("RN-05", "La habitación no está disponible en el rango de fechas seleccionado.");
         }
 
-        Reservation reservation = new Reservation(nextReservationCode(checkIn), guest, room, checkIn, checkOut);
+        Reservation reservation = new Reservation(code, guest, room, checkIn, checkOut);
         return ReservationResponseDTO.from(reservationRepository.save(reservation));
     }
 
@@ -138,10 +147,5 @@ public class ReservationService {
         String clean = code == null ? "" : code.trim().toUpperCase();
         return reservationRepository.findByReservationCode(clean)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe la reserva " + clean + "."));
-    }
-
-    /** Código RES-AAAA-NNN (CHECK ck_reservations_code). El año es el de la fecha de entrada. */
-    private String nextReservationCode(LocalDate checkIn) {
-        return String.format("RES-%d-%03d", checkIn.getYear(), reservationRepository.count() + 1);
     }
 }

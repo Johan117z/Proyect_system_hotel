@@ -55,6 +55,9 @@ INSERT INTO reservations (reservation_code, guest_id, room_id, check_in_date, ch
 -- 10: reserva futura -> sirve para probar el cruce de fechas (RN-05) y la cancelación
 ('RES-2026-010', 10, 10, CURDATE() + INTERVAL 20 DAY, CURDATE() + INTERVAL 23 DAY, 'PENDING');
 
+-- El consecutivo de códigos continúa después de las reservas insertadas aquí (la API generará el 011)
+UPDATE code_sequences SET next_value = (SELECT COUNT(*) + 1 FROM reservations) WHERE name = 'reservation';
+
 -- ---------------------------------------------------------------------
 -- 4. Servicios adicionales (antes de facturar: trigger trg_services_not_invoiced)
 -- ---------------------------------------------------------------------
