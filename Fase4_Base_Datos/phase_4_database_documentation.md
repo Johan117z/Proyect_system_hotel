@@ -66,6 +66,15 @@ Inheritance is mapped as a **single table**: `type` acts as the discriminator co
 
 Index `ix_reservations_overlap (room_id, status, check_in_date, check_out_date)` supports the RN-05 / RN-07 overlap query.
 
+#### `code_sequences` — counter for the reservation code
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `name` | VARCHAR(30) | PK | Counter name (`reservation`) |
+| `next_value` | INT UNSIGNED | NOT NULL, > 0 | Next `NNN` for `RES-YYYY-NNN` |
+
+The REST API reads this row with `SELECT ... FOR UPDATE` as the first statement when it creates a reservation. The row lock makes concurrent reservations wait for each other, so two requests never get the same code and cannot both pass the RN-05 overlap check. If the reservation is rejected, the transaction rolls back and the number is not lost.
+
 ### 4. `additional_services` — class `AdditionalService`
 
 | Column | Type | Constraints | Description |
@@ -132,6 +141,7 @@ The history rows are inserted in the real order of the flow (stay `ACTIVE` → s
 | 2.1 | Added `guests.is_active` | HU-07 logical delete (RN-04) |
 | 2.1 | `trg_services_not_invoiced` | No services after the invoice is issued (RN-12) |
 | 2.1 | Rule codes renamed (`BR-xx` → `RN-xx`) | One rule list, as in the SRS v2.0 |
+| 2.2 | Added `code_sequences` | Concurrent reservations got duplicate codes (`count() + 1`) and could skip the overlap check |
 
 ## 🚀 Deployment & Execution Instructions
 
